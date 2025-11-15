@@ -14,11 +14,11 @@ from dotenv import load_dotenv
 from openai import OpenAI
 
 from src.services import (
+    AnalysisReport,
     AnalyzerDependencies,
     AutomationAnalyzer,
     PostReport,
     search_posts,
-    write_report,
 )
 
 
@@ -107,6 +107,14 @@ def _print_report_entry(report: PostReport) -> None:
     )
 
 
+def _save_report(path: Path, report: AnalysisReport) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = report.model_dump()
+    payload["total_posts"] = report.total_posts
+    with path.open("w", encoding="utf-8") as handle:
+        json.dump(payload, handle, indent=2)
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -142,8 +150,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--report-path",
         type=Path,
-        default=Path("data/report.json"),
-        help="Destination for the JSON report.",
+        default=None,
+        help="Optional destination for saving the JSON report.",
     )
     return parser.parse_args()
 
@@ -162,7 +170,7 @@ def main() -> None:
 
     generated_at = datetime.now(timezone.utc).isoformat()
     results: List[PostReport] = []
-    print("Streaming Reddit results and updating report incrementally...")
+    print("Streaming Reddit results and capturing in-memory report...")
     for post_summary in search_posts(
         reddit_client,
         subreddits=args.subs,
@@ -175,19 +183,16 @@ def main() -> None:
         )
         results.append(report)
         _print_report_entry(report)
-        write_report(
-            args.report_path,
-            generated_at=generated_at,
-            query=args.query,
-            time_filter=args.time_filter,
-            posts=results,
-        )
-        print(
-            f"Report updated ({len(results)} entries) -> {args.report_path}"
-        )
-
-    print(f"Processed {len(results)} posts total.")
-    print(f"Final report available at {args.report_path}")
+    final_report = AnalysisReport(
+        generated_at=generated_at,
+        query=args.query,
+        time_filter=args.time_filter,
+        posts=results,
+    )
+    print(f"Processed {final_report.total_posts} posts total.")
+    if args.report_path:
+        _save_report(args.report_path, final_report)
+        print(f"Final report available at {args.report_path}")
 
 
 if __name__ == "__main__":
