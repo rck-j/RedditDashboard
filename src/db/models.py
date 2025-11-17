@@ -51,6 +51,7 @@ class SearchJob(SQLModel, table=True):
     processed_count: int = 0
     total_count: int = 0
     error_message: Optional[str] = None
+    average_score: Optional[float] = None
     reports: List["PersistedPostReport"] = Relationship(
         back_populates="search_job",
         sa_relationship_kwargs={"cascade": "all, delete-orphan"},
