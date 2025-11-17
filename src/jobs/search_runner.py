@@ -36,8 +36,8 @@ def run(
     job.processed_count = 0
     job.total_count = 0
     job.error_message = None
-    session.add(job)
-    session.commit()
+    job.average_score = None
+    _commit_job(session, job)
 
     reddit_client = build_reddit_client()
     openai_client, model_name = build_openai_client()
@@ -50,6 +50,7 @@ def run(
     analyzer = AutomationAnalyzer(deps)
     batch: List[PersistedPostReport] = []
     processed = 0
+    score_total = 0
     try:
         for summary in search_posts(
             reddit_client,
@@ -58,19 +59,22 @@ def run(
             time_filter=time_filter,
             limit=limit,
         ):
-            processed += 1
-            job.total_count = processed
+            job.total_count += 1
+            _commit_job(session, job)
             report = analyzer.analyze_post(summary, comment_limit=comments_limit)
             batch.append(_persisted_report_from(report, job.id))
+            processed += 1
             job.processed_count = processed
+            score_total += report.score
+            job.average_score = score_total / processed
+            _commit_job(session, job)
             _flush_batch(session, job, batch)
 
         _flush_batch(session, job, batch, force=True)
 
         job.status = JobStatus.SUCCEEDED
         job.finished_at = datetime.now(timezone.utc)
-        session.add(job)
-        session.commit()
+        _commit_job(session, job)
         return str(job.id)
     except Exception as exc:  # pragma: no cover - depends on live APIs
         session.rollback()
@@ -79,11 +83,15 @@ def run(
             job.status = JobStatus.FAILED
             job.error_message = str(exc)
             job.finished_at = datetime.now(timezone.utc)
-            session.add(job)
-            session.commit()
+            _commit_job(session, job)
         raise
     finally:
         session.close()
+
+
+def _commit_job(session, job: SearchJob) -> None:
+    session.add(job)
+    session.commit()
 
 
 def _persisted_report_from(report: PostReport, job_id: int | None) -> PersistedPostReport:
