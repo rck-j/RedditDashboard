@@ -55,6 +55,7 @@ class DummySubmission:
     def __init__(
         self,
         *,
+        submission_id: str = "abc123",
         subreddit: str,
         title: str,
         permalink: str,
@@ -62,6 +63,7 @@ class DummySubmission:
         score: int,
         num_comments: int,
     ) -> None:
+        self.id = submission_id
         self.subreddit = subreddit
         self.title = title
         self.permalink = permalink
@@ -89,9 +91,11 @@ def test_summarize_post_extracts_expected_fields() -> None:
     )
     summary = summarize_post(submission)  # type: ignore[arg-type]
     assert summary == {
+        "id": "abc123",
         "subreddit": "automation",
         "title": "Need help",
         "url": "https://www.reddit.com/r/automation/abc",
+        "permalink": "/r/automation/abc",
         "created_utc": 123.0,
         "score": 42,
         "num_comments": 3,
@@ -299,9 +303,11 @@ def test_save_report_writes_schema_with_total_posts(tmp_path: Path) -> None:
         required_tools=["tool"],
     )
     post = PostReport(
+        submission_id="abc123",
         subreddit="test",
         title="title",
         url="https://reddit.com",
+        permalink="/r/test/comments/abc123/title/",
         created="2024-01-01 00:00:00",
         score=1,
         num_comments=0,

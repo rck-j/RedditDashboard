@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
 from sqlalchemy import Column, DateTime, JSON
 from sqlmodel import Field, Relationship, SQLModel
@@ -65,20 +65,20 @@ class PersistedPostReport(SQLModel, table=True):
 
     id: Optional[int] = Field(default=None, primary_key=True)
     search_job_id: int = Field(foreign_key="search_jobs.id", nullable=False)
+    submission_id: str = Field(index=True)
     subreddit: str
     title: str
     url: str
+    permalink: str
     created: str
     score: int
     num_comments: int
-    initial_assessment: Dict[str, Any] = Field(
-        default_factory=dict,
+    automation_complexity: str
+    required_tools: List[str] = Field(
+        default_factory=list,
         sa_column=Column(JSON, nullable=False),
     )
-    automation_insight: Dict[str, Any] = Field(
-        default_factory=dict,
-        sa_column=Column(JSON, nullable=False),
-    )
+    insight_text: str
     created_at: datetime = Field(
         default_factory=_utcnow,
         sa_column=Column(DateTime(timezone=True), nullable=False),
