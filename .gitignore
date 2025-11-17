@@ -3,3 +3,4 @@
 src/.DS_Store
 templates/.DS_Store
 .DS_Store
+data/search_jobs.db

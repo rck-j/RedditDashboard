@@ -163,6 +163,7 @@ def create_search(request: SearchRequest) -> SearchJob:
     try:
         rq_job = queue.enqueue(
             search_runner.run,
+            job_timeout=900,
             search_job_id=job.id,
             subreddits=payload.subreddits,
             query=payload.query,
