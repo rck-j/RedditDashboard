@@ -40,3 +40,8 @@ A web application for reviewing query results from the PRAW. Enter the subreddit
    ```
 4. Each POST creates a `SearchJob` database row, enqueues `src.jobs.search_runner.run` via RQ, and immediately returns the job metadata (including timestamps, counts, and status). RQ workers stream their progress back into SQLite, creating `PersistedPostReport` rows linked to each job.
 
+## Caching and retention
+
+- The `/api/searches` endpoint consults a Redis cache before enqueuing new work. Search parameters are normalized (subreddits are lower-cased and sorted, whitespace is collapsed, etc.) and hashed into a cache key. If a fresh job exists for the same inputs, the API immediately returns that job instead of duplicating the work. Control the freshness window via `SEARCH_CACHE_TTL_SECONDS` (defaults to one hour).
+- Each worker run calls `src.infra.cleanup.purge_expired_jobs()` before processing new posts. This enforces a rolling TTL for `SearchJob` rows (and their related `PersistedPostReport` entries) so the SQLite file stays small. Override the default 30-day limit with the `SEARCH_JOB_TTL_DAYS` environment variable.
+

@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 from red import PROMPTS, build_openai_client, build_reddit_client
 from src.db.models import JobStatus, PersistedPostReport, SearchJob
 from src.db.session import get_session
+from src.infra.cleanup import purge_expired_jobs
 from src.services import AnalyzerDependencies, AutomationAnalyzer, PostReport, search_posts
 
 load_dotenv()
@@ -25,6 +26,7 @@ def run(
 ) -> str:
     """Execute a Reddit search and persist the resulting analysis report."""
 
+    purge_expired_jobs()
     session = get_session()
     job = session.get(SearchJob, search_job_id)
     if job is None:  # pragma: no cover - defensive
@@ -99,14 +101,17 @@ def _persisted_report_from(report: PostReport, job_id: int | None) -> PersistedP
         raise RuntimeError("Search job must be stored before persisting reports")
     return PersistedPostReport(
         search_job_id=job_id,
+        submission_id=report.submission_id,
         subreddit=report.subreddit,
         title=report.title,
         url=report.url,
+        permalink=report.permalink,
         created=report.created,
         score=report.score,
         num_comments=report.num_comments,
-        initial_assessment=report.initial_assessment.model_dump(),
-        automation_insight=report.automation_insight.model_dump(),
+        automation_complexity=report.automation_insight.automation_complexity,
+        required_tools=report.automation_insight.required_tools,
+        insight_text=report.automation_insight.deep_analysis,
     )
 
 

@@ -16,6 +16,7 @@ from sqlmodel import SQLModel
 
 from src.db.session import engine
 from src.infra.redis import get_redis_client
+from src.infra.search_cache import fetch_cached_job, remember_search_job
 from src.infra.search_jobs import SearchJob, create_search_job
 from src.jobs import search_runner
 
@@ -37,9 +38,11 @@ except ImportError:  # pragma: no cover - fallback for standalone execution
         required_tools: List[str] = Field(default_factory=list)
 
     class BasePostReport(BaseModel):
+        submission_id: str
         subreddit: str
         title: str
         url: str
+        permalink: str
         created: str
         score: int
         num_comments: int
@@ -72,7 +75,8 @@ TEMPLATES = Jinja2Templates(directory=str(ROOT_DIR / "templates"))
 ALLOWED_TIME_FILTERS = {"day", "week", "month", "year", "all"}
 
 app = FastAPI(title="Reddit Automation Report Dashboard")
-queue = Queue("reddit-searches", connection=get_redis_client())
+redis_client = get_redis_client()
+queue = Queue("reddit-searches", connection=redis_client)
 
 
 @app.on_event("startup")
@@ -162,6 +166,17 @@ def create_search(request: SearchRequest) -> SearchJob:
     """Queue a Reddit search via RQ and return the job metadata."""
 
     payload = _validate_search_request(request)
+    cached_job = fetch_cached_job(
+        redis_client,
+        subreddits=payload.subreddits,
+        query=payload.query,
+        time_filter=payload.time_filter,
+        limit=payload.limit,
+        comments_limit=payload.comments_limit,
+    )
+    if cached_job is not None:
+        return cached_job
+
     job = create_search_job(
         query=payload.query,
         subreddits=payload.subreddits,
@@ -185,6 +200,16 @@ def create_search(request: SearchRequest) -> SearchJob:
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"Unable to enqueue search job: {exc}",
         ) from exc
+
+    remember_search_job(
+        redis_client,
+        job_id=job.id,
+        subreddits=payload.subreddits,
+        query=payload.query,
+        time_filter=payload.time_filter,
+        limit=payload.limit,
+        comments_limit=payload.comments_limit,
+    )
     return job
 
 
