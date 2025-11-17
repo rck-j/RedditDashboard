@@ -6,3 +6,4 @@ python-dotenv
 openai
 redis
 rq
+sqlmodel

@@ -38,5 +38,5 @@ A web application for reviewing query results from the PRAW. Enter the subreddit
        "comments_limit": 5
      }'
    ```
-4. Each POST creates a `SearchJob` database row, enqueues `src.jobs.search_runner.run` via RQ, and immediately returns the job metadata (including the Redis job ID). RQ workers write finished reports under `data/jobs/`.
+4. Each POST creates a `SearchJob` database row, enqueues `src.jobs.search_runner.run` via RQ, and immediately returns the job metadata (including timestamps, counts, and status). RQ workers stream their progress back into SQLite, creating `PersistedPostReport` rows linked to each job.
 

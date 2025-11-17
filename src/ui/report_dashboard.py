@@ -12,9 +12,11 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field, ValidationError
 from rq import Queue
+from sqlmodel import SQLModel
 
+from src.db.session import engine
 from src.infra.redis import get_redis_client
-from src.infra.search_jobs import SearchJob, create_search_job, set_rq_job_id
+from src.infra.search_jobs import SearchJob, create_search_job
 from src.jobs import search_runner
 
 try:
@@ -71,6 +73,13 @@ ALLOWED_TIME_FILTERS = {"day", "week", "month", "year", "all"}
 
 app = FastAPI(title="Reddit Automation Report Dashboard")
 queue = Queue("reddit-searches", connection=get_redis_client())
+
+
+@app.on_event("startup")
+def _init_db() -> None:
+    """Ensure SQLModel tables exist before serving traffic."""
+
+    SQLModel.metadata.create_all(engine)
 
 
 def _load_json(path: Path) -> Dict[str, Any]:
@@ -161,7 +170,7 @@ def create_search(request: SearchRequest) -> SearchJob:
         comments_limit=payload.comments_limit,
     )
     try:
-        rq_job = queue.enqueue(
+        queue.enqueue(
             search_runner.run,
             job_timeout=900,
             search_job_id=job.id,
@@ -176,7 +185,7 @@ def create_search(request: SearchRequest) -> SearchJob:
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"Unable to enqueue search job: {exc}",
         ) from exc
-    return set_rq_job_id(job.id, rq_job.id)
+    return job
 
 
 @app.get("/", response_class=HTMLResponse)
