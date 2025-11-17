@@ -1,7 +1,5 @@
 """SQLModel ORM definitions for persisted Reddit search data."""
 
-from __future__ import annotations
-
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
@@ -84,7 +82,7 @@ class PersistedPostReport(SQLModel, table=True):
         default_factory=_utcnow,
         sa_column=Column(DateTime(timezone=True), nullable=False),
     )
-    search_job: Optional[SearchJob] = Relationship(back_populates="reports")
+    search_job: Optional["SearchJob"] = Relationship(back_populates="reports")
 
 
 __all__ = ["JobStatus", "PersistedPostReport", "SearchJob"]
