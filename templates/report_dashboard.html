@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Reddit Automation Report Dashboard</title>
     <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    <script src="https://unpkg.com/htmx.org/dist/ext/json-enc.js"></script>
     <style>
       :root {
         color-scheme: only light;
@@ -166,6 +167,22 @@
         gap: 1rem;
       }
 
+      .job-history-controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        align-items: flex-end;
+      }
+
+      .job-history-controls .form-group {
+        flex: 1 1 220px;
+        margin: 0;
+      }
+
+      .job-history-controls select {
+        width: 100%;
+      }
+
       .status-header {
         display: flex;
         flex-wrap: wrap;
@@ -218,6 +235,24 @@
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
         gap: 1rem;
+      }
+
+      .status-alert {
+        margin: 0.5rem 0 0;
+        font-size: 0.9rem;
+        font-weight: 600;
+      }
+
+      .status-alert[data-variant="info"] {
+        color: #0f172a;
+      }
+
+      .status-alert[data-variant="success"] {
+        color: #15803d;
+      }
+
+      .status-alert[data-variant="error"] {
+        color: #b91c1c;
       }
 
       .status-detail {
@@ -425,7 +460,14 @@
           <h2 id="search-panel-title">Launch a new search</h2>
           <p>Pick subreddits, refine the query, and tune result limits.</p>
         </div>
-        <form id="search-form" novalidate>
+        <form
+          id="search-form"
+          novalidate
+          hx-post="/api/searches"
+          hx-trigger="submit"
+          hx-ext="json-enc"
+          hx-swap="none"
+        >
           <div class="form-grid" role="group" aria-label="Search parameters">
             <div class="form-group">
               <label for="subreddit-select">Subreddits</label>
@@ -475,11 +517,11 @@
               <input
                 type="range"
                 id="comments-limit"
-                name="comments_limit"
                 min="0"
                 max="25"
                 value="5"
               />
+              <input type="hidden" id="comments-limit-value" name="comments_limit" value="5" />
               <span class="range-display" id="comments-limit-display">5 comments</span>
               <label class="range-display">
                 <input type="checkbox" id="comments-unlimited" /> Fetch all comments
@@ -494,18 +536,26 @@
               Reset form
             </button>
             <span id="search-form-feedback" class="form-feedback" role="status" aria-live="polite"></span>
+            <input type="hidden" id="active-job-id" />
           </div>
         </form>
       </section>
 
-      <section
-        class="job-status"
-        id="job-status"
-        aria-live="polite"
-        aria-busy="true"
-        hx-target="this"
-      >
-        <p class="empty-state">Loading the latest search job…</p>
+      <section class="job-status" id="job-status" aria-live="polite" aria-busy="true">
+        <div class="job-history-controls">
+          <div class="form-group">
+            <label for="job-history-select">Job history</label>
+            <select id="job-history-select" aria-label="Previously queued jobs" disabled>
+              <option>Loading jobs…</option>
+            </select>
+          </div>
+          <button type="button" class="btn btn-secondary" id="refresh-history-btn" aria-label="Refresh job history">
+            Refresh
+          </button>
+        </div>
+        <div id="job-status-panel">
+          <p class="empty-state">Loading the latest search job…</p>
+        </div>
       </section>
 
       <section class="summary-metrics" aria-label="Search summary metrics">
@@ -579,6 +629,8 @@
         job: null,
         config: null,
         pollingHandle: null,
+        activeJobId: null,
+        jobHistory: [],
         subredditOptions: [...DEFAULT_SUBREDDITS],
       };
 
@@ -591,9 +643,11 @@
         postsLimit: document.getElementById("posts-limit"),
         postsLimitDisplay: document.getElementById("posts-limit-display"),
         commentsLimit: document.getElementById("comments-limit"),
+        commentsLimitHidden: document.getElementById("comments-limit-value"),
         commentsLimitDisplay: document.getElementById("comments-limit-display"),
         commentsUnlimited: document.getElementById("comments-unlimited"),
-        jobStatus: document.getElementById("job-status"),
+        jobStatusSection: document.getElementById("job-status"),
+        jobStatus: document.getElementById("job-status-panel"),
         summaryCards: document.getElementById("summary-cards"),
         tableBody: document.querySelector("#report-table tbody"),
         subredditFilter: document.getElementById("subreddit-filter"),
@@ -602,6 +656,9 @@
         automationChips: document.querySelectorAll("#automation-chips .chip"),
         resetFormBtn: document.getElementById("reset-form-btn"),
         queryInput: document.getElementById("query-input"),
+        jobHistorySelect: document.getElementById("job-history-select"),
+        refreshHistoryBtn: document.getElementById("refresh-history-btn"),
+        activeJobInput: document.getElementById("active-job-id"),
       };
 
       function escapeHtml(value) {
@@ -612,6 +669,17 @@
           .replace(/>/g, "&gt;")
           .replace(/"/g, "&quot;")
           .replace(/'/g, "&#39;");
+      }
+
+      function truncate(value, limit = 48) {
+        const text = String(value ?? "").trim();
+        if (!text) {
+          return "—";
+        }
+        if (text.length <= limit) {
+          return text;
+        }
+        return `${text.slice(0, limit - 1)}…`;
       }
 
       function uniqueValues(items, selector) {
@@ -696,7 +764,10 @@
           const cell = document.createElement("td");
           cell.colSpan = 7;
           cell.className = "empty-state";
-          cell.textContent = "Reports will populate once the job finishes.";
+          cell.textContent =
+            state.job.status === "failed"
+              ? "Job failed. Retry the search to repopulate the reports table."
+              : "Reports will populate once the job finishes.";
           row.appendChild(cell);
           tbody.appendChild(row);
           return;
@@ -847,9 +918,15 @@
         if (elements.commentsUnlimited.checked) {
           elements.commentsLimit.disabled = true;
           elements.commentsLimitDisplay.textContent = "All comments";
+          if (elements.commentsLimitHidden) {
+            elements.commentsLimitHidden.value = "-1";
+          }
         } else {
           elements.commentsLimit.disabled = false;
           elements.commentsLimitDisplay.textContent = `${elements.commentsLimit.value} comments`;
+          if (elements.commentsLimitHidden) {
+            elements.commentsLimitHidden.value = String(elements.commentsLimit.value);
+          }
         }
       }
 
@@ -870,46 +947,197 @@
         return Array.from(elements.subredditSelect.selectedOptions).map((option) => option.value);
       }
 
-      async function launchSearch(payload) {
-        setFormFeedback("Launching search…");
-        const job = await fetchJson("/api/searches", {
-          method: "POST",
-          body: JSON.stringify(payload),
-        });
-        setFormFeedback("Search launched! Monitoring job status…", "success");
-        startPollingJob(job.id);
+      function setActiveJobId(jobId) {
+        state.activeJobId = jobId || null;
+        if (elements.activeJobInput) {
+          elements.activeJobInput.value = jobId ? String(jobId) : "";
+        }
+        if (elements.jobHistorySelect && jobId) {
+          elements.jobHistorySelect.value = String(jobId);
+        }
       }
 
-      async function handleFormSubmit(event) {
-        event.preventDefault();
+      function validateSearchForm() {
+        const subreddits = getSelectedSubreddits();
+        if (subreddits.length === 0) {
+          setFormFeedback("Select at least one subreddit.", "error");
+          return false;
+        }
+        if (!elements.queryInput.value.trim()) {
+          setFormFeedback("Query must not be empty.", "error");
+          return false;
+        }
+        return true;
+      }
+
+      function parseJobFromResponse(xhr) {
+        if (!xhr) return null;
+        const text = xhr.responseText || "";
+        if (!text) return null;
         try {
-          const subreddits = getSelectedSubreddits();
-          if (subreddits.length === 0) {
-            setFormFeedback("Select at least one subreddit.", "error");
-            return;
+          return JSON.parse(text);
+        } catch (error) {
+          console.error("Unable to parse job response", error);
+          return null;
+        }
+      }
+
+      function extractErrorMessage(xhr) {
+        if (!xhr) {
+          return "Unexpected error";
+        }
+        try {
+          const payload = JSON.parse(xhr.responseText || "{}");
+          if (typeof payload.detail === "string") {
+            return payload.detail;
           }
-          const payload = {
-            subreddits,
-            query: elements.queryInput.value,
-            time_filter: elements.timeFilterSelect.value,
-            limit: Number(elements.postsLimit.value),
-            comments_limit: elements.commentsUnlimited.checked
-              ? -1
-              : Number(elements.commentsLimit.value),
-          };
-          if (!payload.query.trim()) {
-            setFormFeedback("Query must not be empty.", "error");
-            return;
+          if (payload.detail?.message) {
+            return payload.detail.message;
           }
-          await launchSearch(payload);
+          if (payload.message) {
+            return payload.message;
+          }
+        } catch (error) {
+          // ignore parsing errors
+        }
+        return xhr.statusText || "Unexpected error";
+      }
+
+      function handleJobEnqueued(job, message = "Search launched! Monitoring job status…") {
+        if (!job || !job.id) {
+          setFormFeedback("Unexpected response from server.", "error");
+          return;
+        }
+        state.reports = [];
+        state.job = job;
+        renderJobStatus();
+        renderSummaryCards();
+        renderTable();
+        setActiveJobId(job.id);
+        setFormFeedback(message, "success");
+        startPollingJob(job.id);
+        loadJobHistory();
+      }
+
+      function handleSearchBeforeRequest(event) {
+        if (event.target !== elements.form) {
+          return;
+        }
+        if (!validateSearchForm()) {
+          event.preventDefault();
+          return;
+        }
+        setFormFeedback("Launching search…");
+      }
+
+      function handleSearchAfterRequest(event) {
+        if (event.target !== elements.form) {
+          return;
+        }
+        if (!event.detail.successful) {
+          return;
+        }
+        const job = parseJobFromResponse(event.detail.xhr);
+        if (job?.id) {
+          handleJobEnqueued(job);
+        } else {
+          setFormFeedback("Search queued but response was empty.", "error");
+        }
+      }
+
+      function handleSearchError(event) {
+        if (event.target !== elements.form) {
+          return;
+        }
+        const message = extractErrorMessage(event.detail?.xhr);
+        setFormFeedback(`Unable to launch search: ${message}`, "error");
+      }
+
+      function formatJobHistoryLabel(job) {
+        const status = job.status || "unknown";
+        const query = truncate(job.query || "Untitled", 42);
+        return `#${job.id} • ${status} • ${query}`;
+      }
+
+      function renderJobHistoryOptions() {
+        const select = elements.jobHistorySelect;
+        if (!select) {
+          return;
+        }
+        select.innerHTML = "";
+        if (!state.jobHistory.length) {
+          const option = document.createElement("option");
+          option.textContent = "No jobs yet";
+          option.disabled = true;
+          option.selected = true;
+          select.appendChild(option);
+          select.disabled = true;
+          return;
+        }
+        select.disabled = false;
+        state.jobHistory.forEach((job) => {
+          const option = document.createElement("option");
+          option.value = String(job.id);
+          option.textContent = formatJobHistoryLabel(job);
+          option.dataset.status = job.status;
+          select.appendChild(option);
+        });
+        const selectedId = state.activeJobId
+          ? String(state.activeJobId)
+          : String(state.jobHistory[0].id);
+        if (selectedId) {
+          select.value = selectedId;
+        }
+      }
+
+      async function loadJobHistory() {
+        const select = elements.jobHistorySelect;
+        if (!select) {
+          return;
+        }
+        try {
+          const list = await fetchJson("/api/searches?page=1&page_size=25&order=desc");
+          state.jobHistory = list.items || [];
+          renderJobHistoryOptions();
         } catch (error) {
           console.error(error);
-          setFormFeedback(error.message, "error");
+          select.innerHTML = '<option disabled selected>Unable to load jobs</option>';
+          select.disabled = true;
+        }
+      }
+
+      function bindJobHistoryEvents() {
+        if (elements.jobHistorySelect) {
+          elements.jobHistorySelect.addEventListener("change", (event) => {
+            const jobId = Number(event.target.value);
+            if (!jobId || Number.isNaN(jobId)) {
+              return;
+            }
+            startPollingJob(jobId);
+          });
+        }
+        if (elements.refreshHistoryBtn) {
+          elements.refreshHistoryBtn.addEventListener("click", () => {
+            loadJobHistory();
+          });
+        }
+      }
+
+      async function enqueueJob(payload, successMessage = "Search launched! Monitoring job status…") {
+        try {
+          const job = await fetchJson("/api/searches", {
+            method: "POST",
+            body: JSON.stringify(payload),
+          });
+          handleJobEnqueued(job, successMessage);
+        } catch (error) {
+          console.error(error);
+          setFormFeedback(error.message || "Unable to queue job.", "error");
         }
       }
       function setJobStatusMessage(message, { busy = false } = {}) {
         elements.jobStatus.innerHTML = `<p class="empty-state">${escapeHtml(message)}</p>`;
-        elements.jobStatus.setAttribute("aria-busy", busy ? "true" : "false");
+        elements.jobStatusSection.setAttribute("aria-busy", busy ? "true" : "false");
       }
 
       function formatDate(value) {
@@ -948,9 +1176,10 @@
         const errorBlock = job.error_message
           ? `<div class="status-detail"><span>Error</span><strong>${escapeHtml(job.error_message)}</strong></div>`
           : "";
+        const subredditList = Array.isArray(job.subreddits) ? job.subreddits : [];
         const paramsList = `
           <ul>
-            <li><strong>Subreddits:</strong> ${job.subreddits.map(escapeHtml).join(", ")}</li>
+            <li><strong>Subreddits:</strong> ${subredditList.map(escapeHtml).join(", ")}</li>
             <li><strong>Query:</strong> ${escapeHtml(job.query)}</li>
             <li><strong>Time filter:</strong> ${escapeHtml(job.time_filter)}</li>
             <li><strong>Limit:</strong> ${job.limit} posts</li>
@@ -959,13 +1188,31 @@
         `;
         const actions = [];
         const isTerminal = ["succeeded", "failed"].includes(job.status);
+        const retryDisabled = job.status === "running" || job.status === "queued";
+        const statusVariants = {
+          succeeded: {
+            variant: "success",
+            message: "Job finished successfully. Explore the reports below.",
+          },
+          failed: {
+            variant: "error",
+            message: "Job failed. Review the error details and retry when ready.",
+          },
+          default: {
+            variant: "info",
+            message: "Job in progress. We'll refresh automatically until it completes.",
+          },
+        };
+        const statusMeta = statusVariants[job.status] || statusVariants.default;
         actions.push(
           `<button class="btn btn-danger" type="button" data-action="cancel" ${
             isTerminal ? "disabled" : ""
           } aria-label="Cancel job">Cancel</button>`
         );
         actions.push(
-          `<button class="btn btn-secondary" type="button" data-action="retry" aria-label="Retry job">Retry</button>`
+          `<button class="btn btn-secondary" type="button" data-action="retry" aria-label="Retry job" ${
+            retryDisabled ? "disabled" : ""
+          }>Retry</button>`
         );
         actions.push(
           `<button class="btn btn-secondary" type="button" data-action="refresh" aria-label="Refresh job">Refresh</button>`
@@ -999,9 +1246,13 @@
             <span>Parameters</span>
             ${paramsList}
           </div>
+          <p class="status-alert" data-variant="${statusMeta.variant}">${statusMeta.message}</p>
           <div class="status-actions">${actions.join("")}</div>
         `;
-        elements.jobStatus.setAttribute("aria-busy", job.status === "running" ? "true" : "false");
+        elements.jobStatusSection.setAttribute(
+          "aria-busy",
+          job.status === "running" || job.status === "queued" ? "true" : "false"
+        );
       }
 
       function renderSummaryCards() {
@@ -1067,12 +1318,14 @@
           const job = await fetchJson(`/api/searches/${jobId}`);
           state.job = job;
           state.reports = Array.isArray(job.reports) ? job.reports : [];
+          setActiveJobId(job.id);
           renderSubredditOptions(job.subreddits || []);
           renderJobStatus();
           renderSummaryCards();
           updateFilterOptions();
           renderTable();
           prefillForm(job);
+          renderJobHistoryOptions();
           if (["succeeded", "failed"].includes(job.status) && state.pollingHandle) {
             clearInterval(state.pollingHandle);
             state.pollingHandle = null;
@@ -1087,8 +1340,9 @@
         if (state.pollingHandle) {
           clearInterval(state.pollingHandle);
         }
+        setActiveJobId(jobId);
         hydrateJob(jobId);
-        state.pollingHandle = setInterval(() => hydrateJob(jobId), 5000);
+        state.pollingHandle = setInterval(() => hydrateJob(jobId), 2000);
       }
 
       async function loadLatestJob() {
@@ -1102,10 +1356,13 @@
             renderTable();
             renderSummaryCards();
             setJobStatusMessage("No completed search jobs yet. Launch one to begin.");
+            setActiveJobId(null);
+            renderJobHistoryOptions();
           }
         } catch (error) {
           console.error(error);
           setJobStatusMessage("Unable to load existing jobs.");
+          setActiveJobId(null);
         }
       }
 
@@ -1182,7 +1439,9 @@
             clearInterval(state.pollingHandle);
             state.pollingHandle = null;
           }
+          setActiveJobId(null);
           loadLatestJob();
+          loadJobHistory();
         } catch (error) {
           console.error(error);
           setFormFeedback("Unable to cancel job: " + error.message, "error");
@@ -1198,12 +1457,7 @@
           limit: state.job.limit,
           comments_limit: state.job.comments_limit,
         };
-        try {
-          await launchSearch(payload);
-        } catch (error) {
-          console.error(error);
-          setFormFeedback("Unable to retry job: " + error.message, "error");
-        }
+        enqueueJob(payload, "Retry queued. Monitoring job status…");
       }
 
       function bindJobStatusActions() {
@@ -1229,10 +1483,14 @@
         bindSubredditAdder();
         bindRangeInputs();
         bindJobStatusActions();
-        elements.form.addEventListener("submit", handleFormSubmit);
+        bindJobHistoryEvents();
+        document.body.addEventListener("htmx:beforeRequest", handleSearchBeforeRequest);
+        document.body.addEventListener("htmx:afterRequest", handleSearchAfterRequest);
+        document.body.addEventListener("htmx:responseError", handleSearchError);
         renderTable();
         renderSummaryCards();
         fetchConfig();
+        loadJobHistory();
         loadLatestJob();
       }
 
