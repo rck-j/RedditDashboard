@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from typing import Dict, List, Tuple
 
+import json
+from datetime import datetime, timezone
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import SQLModel, Session, create_engine, select
@@ -79,6 +82,53 @@ def _create_report(job_id: int, **overrides) -> PersistedPostReport:
         session.commit()
         session.refresh(report)
         return report
+
+
+def test_read_reports_returns_latest_job_payload(api_client) -> None:
+    client, _ = api_client
+    older_job = _create_job(
+        status=JobStatus.SUCCEEDED,
+        finished_at=datetime(2024, 1, 1, tzinfo=timezone.utc),
+        query="old",
+    )
+    _create_report(older_job.id, submission_id="old")
+    newer_job = _create_job(
+        status=JobStatus.SUCCEEDED,
+        finished_at=datetime(2024, 1, 2, tzinfo=timezone.utc),
+        query="latest",
+    )
+    _create_report(
+        newer_job.id,
+        submission_id="new",
+        automation_complexity="high",
+        insight_text="Deep analysis",  # ensures deterministic summary
+    )
+
+    response = client.get("/api/reports")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(payload) == 1
+    assert payload[0]["submission_id"] == "new"
+    assert payload[0]["automation_insight"]["automation_complexity"] == "high"
+    stats_header = response.headers["X-RedDash-Report-Stats"]
+    stats = json.loads(stats_header)
+    assert stats["search_job_id"] == newer_job.id
+    assert stats["report_count"] == 1
+
+
+def test_read_reports_handles_missing_jobs(api_client) -> None:
+    client, _ = api_client
+
+    response = client.get("/api/reports")
+
+    assert response.status_code == 200
+    assert response.json() == []
+    assert response.headers["X-RedDash-Report-Status"] == "no-completed-job"
+    assert (
+        response.headers["X-RedDash-Report-Message"]
+        == "No completed search jobs yet. Launch one via POST /api/searches."
+    )
 
 
 def test_create_search_enqueues_job(api_client) -> None:
