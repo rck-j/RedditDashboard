@@ -623,6 +623,7 @@
           subreddit: "all",
           complexity: "all",
           search: "",
+          searchRaw: "",
           automation: "any",
         },
         reports: [],
@@ -660,6 +661,8 @@
         refreshHistoryBtn: document.getElementById("refresh-history-btn"),
         activeJobInput: document.getElementById("active-job-id"),
       };
+
+      let filterBindingAbortController = null;
 
       function escapeHtml(value) {
         const text = String(value ?? "");
@@ -711,6 +714,39 @@
         }
       }
 
+      function refreshFilterElements() {
+        elements.subredditFilter = document.getElementById("subreddit-filter");
+        elements.complexityFilter = document.getElementById("complexity-filter");
+        elements.searchFilter = document.getElementById("search-filter");
+        elements.automationChips = document.querySelectorAll("#automation-chips .chip");
+      }
+
+      function applyFilterSelections() {
+        if (elements.subredditFilter) {
+          ensureSelectValue(elements.subredditFilter, state.filters.subreddit || "all");
+        }
+        if (elements.complexityFilter) {
+          ensureSelectValue(elements.complexityFilter, state.filters.complexity || "all");
+        }
+        if (elements.searchFilter) {
+          const rawValue = state.filters.searchRaw ?? state.filters.search ?? "";
+          elements.searchFilter.value = rawValue;
+        }
+        if (elements.automationChips?.length) {
+          elements.automationChips.forEach((chip) => {
+            chip.classList.toggle("active", chip.dataset.value === state.filters.automation);
+          });
+        }
+      }
+
+      function refreshFilterControls({ rebind = false } = {}) {
+        refreshFilterElements();
+        applyFilterSelections();
+        if (rebind) {
+          bindFilterEvents();
+        }
+      }
+
       function formatTools(tools) {
         if (!Array.isArray(tools) || tools.length === 0) {
           return "—";
@@ -747,6 +783,10 @@
 
       function renderTable() {
         const tbody = elements.tableBody;
+        if (!tbody) {
+          return;
+        }
+        refreshFilterControls();
         tbody.innerHTML = "";
         if (!state.job) {
           const row = document.createElement("tr");
@@ -813,33 +853,67 @@
 
       function updateFilterOptions() {
         populateSelect(elements.subredditFilter, uniqueValues(state.reports, (item) => item.subreddit));
+        ensureSelectValue(elements.subredditFilter, state.filters.subreddit || "all");
         populateSelect(
           elements.complexityFilter,
           uniqueValues(state.reports, (item) => item.automation_complexity || "").filter(Boolean)
         );
+        ensureSelectValue(elements.complexityFilter, state.filters.complexity || "all");
       }
 
       function bindFilterEvents() {
-        elements.subredditFilter.addEventListener("change", (event) => {
-          state.filters.subreddit = event.target.value;
-          renderTable();
-        });
-        elements.complexityFilter.addEventListener("change", (event) => {
-          state.filters.complexity = event.target.value;
-          renderTable();
-        });
-        elements.searchFilter.addEventListener("input", (event) => {
-          state.filters.search = event.target.value.trim().toLowerCase();
-          renderTable();
-        });
-        elements.automationChips.forEach((chip) => {
-          chip.addEventListener("click", () => {
-            elements.automationChips.forEach((c) => c.classList.remove("active"));
-            chip.classList.add("active");
-            state.filters.automation = chip.dataset.value;
-            renderTable();
+        refreshFilterElements();
+        if (filterBindingAbortController) {
+          filterBindingAbortController.abort();
+        }
+        filterBindingAbortController = new AbortController();
+        const { signal } = filterBindingAbortController;
+
+        if (elements.subredditFilter) {
+          elements.subredditFilter.addEventListener(
+            "change",
+            (event) => {
+              state.filters.subreddit = event.target.value;
+              renderTable();
+            },
+            { signal }
+          );
+        }
+        if (elements.complexityFilter) {
+          elements.complexityFilter.addEventListener(
+            "change",
+            (event) => {
+              state.filters.complexity = event.target.value;
+              renderTable();
+            },
+            { signal }
+          );
+        }
+        if (elements.searchFilter) {
+          elements.searchFilter.addEventListener(
+            "input",
+            (event) => {
+              state.filters.searchRaw = event.target.value;
+              state.filters.search = event.target.value.trim().toLowerCase();
+              renderTable();
+            },
+            { signal }
+          );
+        }
+        if (elements.automationChips?.length) {
+          elements.automationChips.forEach((chip) => {
+            chip.addEventListener(
+              "click",
+              () => {
+                elements.automationChips.forEach((c) => c.classList.remove("active"));
+                chip.classList.add("active");
+                state.filters.automation = chip.dataset.value;
+                renderTable();
+              },
+              { signal }
+            );
           });
-        });
+        }
       }
 
       function setFormFeedback(message, variant = "info") {
@@ -1012,6 +1086,7 @@
         state.job = job;
         renderJobStatus();
         renderSummaryCards();
+        updateFilterOptions();
         renderTable();
         setActiveJobId(job.id);
         setFormFeedback(message, "success");
@@ -1353,6 +1428,7 @@
           } else {
             state.job = null;
             state.reports = [];
+            updateFilterOptions();
             renderTable();
             renderSummaryCards();
             setJobStatusMessage("No completed search jobs yet. Launch one to begin.");
@@ -1396,7 +1472,7 @@
       }
 
       function ensureSelectValue(select, value) {
-        if (!value) return;
+        if (!select || value === undefined || value === null) return;
         const exists = Array.from(select.options).some((option) => option.value === value);
         if (!exists) {
           const option = document.createElement("option");
@@ -1433,6 +1509,7 @@
           setJobStatusMessage("Job cancelled. Start a new search to continue.");
           state.job = null;
           state.reports = [];
+          updateFilterOptions();
           renderSummaryCards();
           renderTable();
           if (state.pollingHandle) {
@@ -1479,7 +1556,7 @@
 
       function initialize() {
         renderSubredditOptions(DEFAULT_SUBREDDITS);
-        bindFilterEvents();
+        refreshFilterControls({ rebind: true });
         bindSubredditAdder();
         bindRangeInputs();
         bindJobStatusActions();
@@ -1487,6 +1564,7 @@
         document.body.addEventListener("htmx:beforeRequest", handleSearchBeforeRequest);
         document.body.addEventListener("htmx:afterRequest", handleSearchAfterRequest);
         document.body.addEventListener("htmx:responseError", handleSearchError);
+        document.body.addEventListener("htmx:afterSwap", () => refreshFilterControls({ rebind: true }));
         renderTable();
         renderSummaryCards();
         fetchConfig();
