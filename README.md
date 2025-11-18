@@ -17,7 +17,7 @@ A web application for reviewing query results from the PRAW. Enter the subreddit
    ```bash
    uvicorn src.ui.report_dashboard:app --reload
    ```
-2. Visit `http://localhost:8000` to load the HTMX-powered dashboard which renders the latest report stored in `data/report.json`.
+2. Visit `http://localhost:8000` to load the HTMX-powered dashboard. The legacy table still calls `/api/reports`, which now streams the latest completed SQLModel `SearchJob` back in the same JSON structure that `data/report.json` used to provide.
 
 ## Background search jobs with Redis + RQ
 
@@ -39,6 +39,12 @@ A web application for reviewing query results from the PRAW. Enter the subreddit
      }'
    ```
 4. Each POST creates a `SearchJob` database row, enqueues `src.jobs.search_runner.run` via RQ, and immediately returns the job metadata (including timestamps, counts, and status). RQ workers stream their progress back into SQLite, creating `PersistedPostReport` rows linked to each job.
+
+### Legacy `/api/reports` compatibility
+
+- The `/api/reports` endpoint now queries the database for the most recently finished job with `status="succeeded"` and serializes its `PersistedPostReport` rows back into the original `PostReport` schema expected by the dashboard table. The response body remains a JSON list, but the handler also sets an `X-RedDash-Report-Stats` header (job id, completion timestamp, and report count) so the UI team can detect when a job changes.
+- If no job has finished yet the API responds with an empty list plus the header `X-RedDash-Report-Message: No completed search jobs yet. Launch one via POST /api/searches.` to make the situation explicit.
+- Once the dashboard migrates to the richer `/api/searches/{id}` endpoint, the header metadata can guide the UI in choosing which job id to hydrate.
 
 ## Caching and retention
 

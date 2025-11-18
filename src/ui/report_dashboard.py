@@ -4,14 +4,13 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
-from functools import lru_cache
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Sequence
+from typing import Dict, List, Sequence
 
-from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field
 from redis.exceptions import RedisError
 from rq import Queue
 from sqlalchemy import func
@@ -61,6 +60,8 @@ except ImportError:  # pragma: no cover - fallback for standalone execution
         num_comments: int
         initial_assessment: InitialAssessment
         automation_insight: AutomationInsight
+else:  # pragma: no cover - red.py already depends on src.services definitions
+    from src.services import AutomationInsight, InitialAssessment
 
 
 class PostReport(BasePostReport):
@@ -68,7 +69,6 @@ class PostReport(BasePostReport):
 
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
-DATA_PATH = ROOT_DIR / "data" / "report.json"
 TEMPLATES = Jinja2Templates(directory=str(ROOT_DIR / "templates"))
 
 RATE_LIMIT_REQUESTS_PER_MINUTE = 30
@@ -85,31 +85,11 @@ def _init_db() -> None:
     SQLModel.metadata.create_all(engine)
 
 
-def _load_json(path: Path) -> Dict[str, Any]:
-    try:
-        with path.open("r", encoding="utf-8") as handle:
-            return json.load(handle)
-    except FileNotFoundError as exc:  # pragma: no cover - runtime protection
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except json.JSONDecodeError as exc:  # pragma: no cover - runtime protection
-        raise HTTPException(status_code=500, detail="Invalid report JSON") from exc
-
-
 def _error_detail(code: str, message: str, *, field: str | None = None) -> Dict[str, str]:
     payload = {"code": code, "message": message}
     if field:
         payload["field"] = field
     return payload
-
-
-def _parse_reports(items: Iterable[Dict[str, Any]]) -> List[PostReport]:
-    reports: List[PostReport] = []
-    for item in items:
-        try:
-            reports.append(PostReport.model_validate(item))
-        except ValidationError as exc:  # pragma: no cover - runtime protection
-            raise HTTPException(status_code=500, detail=str(exc)) from exc
-    return reports
 
 
 def enforce_rate_limit(request: Request) -> None:
@@ -135,27 +115,96 @@ def enforce_rate_limit(request: Request) -> None:
         return
 
 
-@lru_cache(maxsize=1)
-def get_reports() -> List[PostReport]:
-    """Load and parse report entries from disk."""
+def _summarize_text(value: str, *, limit: int = 240) -> str:
+    """Collapse whitespace and clamp long summaries."""
 
-    payload = _load_json(DATA_PATH)
-    posts = payload.get("posts")
-    if posts is None:
-        if isinstance(payload, list):
-            posts = payload
-        else:
-            raise HTTPException(status_code=500, detail="Report payload missing 'posts'.")
-    if not isinstance(posts, list):
-        raise HTTPException(status_code=500, detail="Report posts should be a list.")
-    return _parse_reports(posts)
+    collapsed = " ".join((value or "").split()).strip()
+    if not collapsed:
+        return "Summary unavailable."
+    if len(collapsed) <= limit:
+        return collapsed
+    return f"{collapsed[:limit].rstrip()}…"
+
+
+def _legacy_report_from(report: PersistedPostReport) -> PostReport:
+    """Adapt a stored report row to the original PostReport schema."""
+
+    deep_analysis = report.insight_text or "Detailed analysis pending."
+    complexity = (report.automation_complexity or "unknown").strip() or "unknown"
+    summary = _summarize_text(deep_analysis)
+    is_automation = complexity.lower() not in {"unknown", "n/a"}
+    initial_assessment = InitialAssessment(
+        is_automation=is_automation,
+        rationale=summary,
+    )
+    automation_insight = AutomationInsight(
+        automation_summary=summary,
+        deep_analysis=deep_analysis,
+        automation_complexity=complexity,
+        required_tools=list(report.required_tools or []),
+    )
+    return PostReport(
+        submission_id=report.submission_id,
+        subreddit=report.subreddit,
+        title=report.title,
+        url=report.url,
+        permalink=report.permalink,
+        created=report.created,
+        score=report.score,
+        num_comments=report.num_comments,
+        initial_assessment=initial_assessment,
+        automation_insight=automation_insight,
+    )
+
+
+def _latest_succeeded_job(session) -> SearchJob | None:
+    stmt = (
+        select(SearchJob)
+        .where(SearchJob.status == JobStatus.SUCCEEDED)
+        .where(SearchJob.is_deleted.is_(False))
+        .order_by(SearchJob.finished_at.desc(), SearchJob.created_at.desc())
+        .limit(1)
+    )
+    return session.exec(stmt).first()
+
+
+def _latest_reports() -> tuple[SearchJob | None, List[PostReport]]:
+    with get_session() as session:
+        job = _latest_succeeded_job(session)
+        if job is None:
+            return None, []
+        persisted_reports = _fetch_reports(session, job.id)
+    return job, [_legacy_report_from(report) for report in persisted_reports]
+
+
+def get_reports() -> List[PostReport]:
+    """Return the latest completed search as legacy PostReports."""
+
+    _, reports = _latest_reports()
+    return reports
 
 
 @app.get("/api/reports", response_model=List[PostReport])
-def read_reports() -> List[PostReport]:
-    """Return the parsed report entries as JSON."""
+def read_reports(response: Response) -> List[PostReport]:
+    """Return the parsed report entries backed by the SQLModel database."""
 
-    return get_reports()
+    job, reports = _latest_reports()
+    if job is None:
+        response.headers["X-RedDash-Report-Status"] = "no-completed-job"
+        response.headers[
+            "X-RedDash-Report-Message"
+        ] = "No completed search jobs yet. Launch one via POST /api/searches."
+        return []
+
+    stats_payload = {
+        "search_job_id": job.id,
+        "report_count": len(reports),
+        "generated_at": job.finished_at.isoformat() if job.finished_at else None,
+        "query": job.query,
+    }
+    response.headers["X-RedDash-Report-Status"] = "ok"
+    response.headers["X-RedDash-Report-Stats"] = json.dumps(stats_payload)
+    return reports
 
 
 @app.get("/api/config", response_model=AppConfigResponse)
