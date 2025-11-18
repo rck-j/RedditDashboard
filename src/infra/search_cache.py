@@ -88,7 +88,7 @@ def fetch_cached_job(
         redis_client.delete(cache_key)
         return None
 
-    if job.status == JobStatus.FAILED:
+    if job.is_deleted or job.status == JobStatus.FAILED:
         redis_client.delete(cache_key)
         return None
 
