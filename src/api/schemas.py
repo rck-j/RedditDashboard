@@ -9,13 +9,13 @@ from typing import List
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from src.db.models import JobStatus
+from src.config import SEARCH_PARAMETERS
 
 DEFAULT_SUBREDDITS = ("smallbusiness", "Entrepreneur")
 DEFAULT_QUERY = (
     '(agent OR "ai agent" OR agentic OR automation) '
     "(small business OR smb OR entrepreneur)"
 )
-ALLOWED_TIME_FILTERS = {"day", "week", "month", "year", "all"}
 SUBREDDIT_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_]{2,20}$")
 
 
@@ -30,9 +30,9 @@ class SearchRequest(BaseModel):
         default=DEFAULT_QUERY,
         description="Search query passed to Reddit",
     )
-    time_filter: str = Field(default="month")
-    limit: int = Field(default=50)
-    comments_limit: int = Field(default=5)
+    time_filter: str = Field(default=SEARCH_PARAMETERS.default_time_filter)
+    limit: int = Field(default=SEARCH_PARAMETERS.limit_default)
+    comments_limit: int = Field(default=SEARCH_PARAMETERS.comments_limit_default)
 
     @field_validator("subreddits", mode="before")
     @classmethod
@@ -75,10 +75,11 @@ class SearchRequest(BaseModel):
     @classmethod
     def _validate_time_filter(cls, value: str) -> str:
         normalized = (value or "").lower()
-        if normalized not in ALLOWED_TIME_FILTERS:
+        allowed = set(SEARCH_PARAMETERS.time_filters)
+        if normalized not in allowed:
             raise ValueError(
                 "Time filter must be one of: "
-                + ", ".join(sorted(ALLOWED_TIME_FILTERS))
+                + ", ".join(sorted(allowed))
                 + "."
             )
         return normalized
@@ -87,19 +88,47 @@ class SearchRequest(BaseModel):
     @classmethod
     def _validate_limit(cls, value: int) -> int:
         if value is None:
-            return 50
+            return SEARCH_PARAMETERS.limit_default
         if value <= 0:
             raise ValueError("Limit must be a positive integer.")
+        if value > SEARCH_PARAMETERS.limit_max:
+            raise ValueError(
+                f"Limit must be less than or equal to {SEARCH_PARAMETERS.limit_max}."
+            )
         return value
 
     @field_validator("comments_limit")
     @classmethod
     def _validate_comments_limit(cls, value: int) -> int:
         if value is None:
-            return 5
+            return SEARCH_PARAMETERS.comments_limit_default
         if value < -1:
             raise ValueError("Comments limit must be -1 or greater.")
+        if value == -1:
+            return value
+        if value > SEARCH_PARAMETERS.comments_limit_max:
+            raise ValueError(
+                "Comments limit must be less than or equal to "
+                f"{SEARCH_PARAMETERS.comments_limit_max} or -1 for all comments."
+            )
         return value
+
+
+class TimeFilterMetadata(BaseModel):
+    options: List[str]
+    default: str
+
+
+class LimitMetadata(BaseModel):
+    default: int
+    max: int
+    allow_unlimited: bool = False
+
+
+class AppConfigResponse(BaseModel):
+    time_filters: TimeFilterMetadata
+    limits: dict[str, LimitMetadata]
+    prompts: dict[str, str]
 
 
 class PersistedPostReportSchema(BaseModel):
@@ -162,9 +191,12 @@ class SearchJobListResponse(BaseModel):
 
 
 __all__ = [
+    "AppConfigResponse",
+    "LimitMetadata",
     "PersistedPostReportSchema",
     "SearchJobListResponse",
     "SearchJobResponse",
     "SearchJobStats",
     "SearchRequest",
+    "TimeFilterMetadata",
 ]
