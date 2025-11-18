@@ -20,24 +20,283 @@
           #f8fafc;
       }
 
+      main {
+        max-width: 1200px;
+        margin: 0 auto;
+      }
+
       h1 {
         margin-top: 0;
         color: #0f172a;
+      }
+
+      h2,
+      h3 {
+        color: #0f172a;
+        margin-top: 0;
+      }
+
+      p {
+        color: #475569;
+        line-height: 1.4;
+      }
+
+      .search-panel,
+      .job-status,
+      .table-wrapper,
+      .filters,
+      .summary-metrics {
+        background-color: white;
+        border: 1px solid #e2e8f0;
+        border-radius: 1rem;
+        padding: 1.5rem;
+        box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+        margin-bottom: 1.5rem;
+      }
+
+      .panel-heading {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+        margin-bottom: 1rem;
+      }
+
+      .form-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 1rem;
+      }
+
+      .form-group {
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+      }
+
+      label {
+        font-weight: 600;
+        color: #1e293b;
+      }
+
+      select,
+      input[type="text"],
+      input[type="search"],
+      textarea {
+        border-radius: 0.75rem;
+        border: 1px solid #cbd5f5;
+        padding: 0.65rem 0.85rem;
+        font-size: 1rem;
+        font-family: inherit;
+        color: #0f172a;
+        background-color: #f8fafc;
+      }
+
+      select[multiple] {
+        min-height: 120px;
+      }
+
+      .subreddit-adder {
+        display: flex;
+        gap: 0.5rem;
+        margin-top: 0.5rem;
+      }
+
+      .subreddit-adder input {
+        flex: 1;
+      }
+
+      .range-field {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+
+      input[type="range"] {
+        width: 100%;
+        accent-color: #2563eb;
+      }
+
+      .range-display {
+        font-size: 0.9rem;
+        color: #475569;
+      }
+
+      .form-actions {
+        margin-top: 1rem;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        align-items: center;
+      }
+
+      .btn {
+        border: none;
+        border-radius: 999px;
+        padding: 0.65rem 1.4rem;
+        font-size: 1rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+      }
+
+      .btn-primary {
+        background: linear-gradient(135deg, #2563eb, #3b82f6);
+        color: white;
+        box-shadow: 0 10px 20px rgba(37, 99, 235, 0.3);
+      }
+
+      .btn-secondary {
+        background-color: #e2e8f0;
+        color: #1e293b;
+      }
+
+      .btn-danger {
+        background-color: #dc2626;
+        color: white;
+      }
+
+      .btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      .job-status {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+      }
+
+      .status-header {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        gap: 0.5rem;
+        align-items: baseline;
+      }
+
+      .status-chip {
+        border-radius: 999px;
+        padding: 0.35rem 0.85rem;
+        font-size: 0.85rem;
+        text-transform: capitalize;
+        font-weight: 600;
+        background-color: #e2e8f0;
+        color: #0f172a;
+      }
+
+      .status-chip[data-status="running"],
+      .status-chip[data-status="queued"] {
+        background-color: #fef3c7;
+        color: #92400e;
+      }
+
+      .status-chip[data-status="succeeded"] {
+        background-color: #dcfce7;
+        color: #166534;
+      }
+
+      .status-chip[data-status="failed"] {
+        background-color: #fee2e2;
+        color: #b91c1c;
+      }
+
+      .progress-track {
+        width: 100%;
+        height: 12px;
+        border-radius: 999px;
+        background-color: #e2e8f0;
+        overflow: hidden;
+      }
+
+      .progress-bar {
+        height: 100%;
+        background: linear-gradient(90deg, #2563eb, #38bdf8);
+        width: 0;
+      }
+
+      .status-details {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 1rem;
+      }
+
+      .status-detail {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+      }
+
+      .status-detail span:first-child {
+        font-size: 0.85rem;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+
+      .status-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+      }
+
+      .summary-metrics {
+        padding-bottom: 0.75rem;
+      }
+
+      .metric-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1rem;
+      }
+
+      .metric-card {
+        background-color: #f8fafc;
+        border-radius: 1rem;
+        padding: 1rem;
+        border: 1px solid #e2e8f0;
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+      }
+
+      .metric-label {
+        text-transform: uppercase;
+        font-size: 0.75rem;
+        letter-spacing: 0.08em;
+        color: #64748b;
+      }
+
+      .metric-value {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: #0f172a;
+      }
+
+      .metric-footnote {
+        font-size: 0.9rem;
+        color: #475569;
+      }
+
+      .metric-bar {
+        width: 100%;
+        height: 8px;
+        border-radius: 999px;
+        background-color: #e2e8f0;
+        overflow: hidden;
+      }
+
+      .metric-bar span {
+        display: block;
+        height: 100%;
+        background: linear-gradient(90deg, #0ea5e9, #22d3ee);
+        width: 0;
       }
 
       .filters {
         display: flex;
         flex-wrap: wrap;
         gap: 1rem;
-        margin-bottom: 1.5rem;
         align-items: center;
-      }
-
-      .filters label {
-        font-weight: 600;
-        display: block;
-        margin-bottom: 0.25rem;
-        color: #1e293b;
       }
 
       .filter-group {
@@ -69,12 +328,15 @@
         box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
       }
 
+      .table-wrapper {
+        padding: 0;
+        overflow: hidden;
+      }
+
       table {
         width: 100%;
         border-collapse: collapse;
         background-color: white;
-        box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
-        border: 1px solid #e2e8f0;
       }
 
       th,
@@ -105,9 +367,38 @@
         text-align: center;
         padding: 2rem;
         color: #475569;
+        width: 100%;
+      }
+
+      .form-feedback {
+        margin-top: 0.75rem;
+        font-size: 0.95rem;
+      }
+
+      .form-feedback[data-variant="error"] {
+        color: #b91c1c;
+      }
+
+      .form-feedback[data-variant="success"] {
+        color: #15803d;
+      }
+
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        border: 0;
       }
 
       @media (max-width: 960px) {
+        body {
+          padding: 1rem;
+        }
+
         table {
           font-size: 0.9rem;
         }
@@ -121,8 +412,110 @@
   </head>
   <body>
     <main>
-      <h1>Reddit Automation Report Dashboard</h1>
-      <section class="filters">
+      <header>
+        <h1>Reddit Automation Report Dashboard</h1>
+        <p>
+          Launch Reddit searches, monitor their progress, and explore automation-ready posts with
+          live metrics.
+        </p>
+      </header>
+
+      <section class="search-panel" aria-labelledby="search-panel-title">
+        <div class="panel-heading">
+          <h2 id="search-panel-title">Launch a new search</h2>
+          <p>Pick subreddits, refine the query, and tune result limits.</p>
+        </div>
+        <form id="search-form" novalidate>
+          <div class="form-grid" role="group" aria-label="Search parameters">
+            <div class="form-group">
+              <label for="subreddit-select">Subreddits</label>
+              <select
+                id="subreddit-select"
+                name="subreddits"
+                multiple
+                aria-describedby="subreddit-help"
+              ></select>
+              <p id="subreddit-help" class="range-display">
+                Select one or more communities. Hold Ctrl (or Command) to select multiples.
+              </p>
+              <div class="subreddit-adder">
+                <label for="new-subreddit" class="sr-only">Add subreddit</label>
+                <input
+                  id="new-subreddit"
+                  type="text"
+                  placeholder="Add subreddit"
+                  autocomplete="off"
+                />
+                <button type="button" class="btn btn-secondary" id="add-subreddit-btn">
+                  Add
+                </button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="query-input">Query</label>
+              <textarea
+                id="query-input"
+                name="query"
+                rows="4"
+                placeholder="(agent OR &quot;ai agent&quot;) automation"
+                aria-label="Search query"
+              ></textarea>
+            </div>
+            <div class="form-group">
+              <label for="time-filter">Time filter</label>
+              <select id="time-filter" name="time_filter" aria-label="Time filter"></select>
+            </div>
+            <div class="form-group range-field">
+              <label for="posts-limit">Post limit</label>
+              <input type="range" id="posts-limit" name="limit" min="10" max="200" value="50" />
+              <span class="range-display" id="posts-limit-display">50 posts</span>
+            </div>
+            <div class="form-group range-field">
+              <label for="comments-limit">Comments per post</label>
+              <input
+                type="range"
+                id="comments-limit"
+                name="comments_limit"
+                min="0"
+                max="25"
+                value="5"
+              />
+              <span class="range-display" id="comments-limit-display">5 comments</span>
+              <label class="range-display">
+                <input type="checkbox" id="comments-unlimited" /> Fetch all comments
+              </label>
+            </div>
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary" aria-label="Launch search">
+              Launch search
+            </button>
+            <button type="reset" class="btn btn-secondary" id="reset-form-btn">
+              Reset form
+            </button>
+            <span id="search-form-feedback" class="form-feedback" role="status" aria-live="polite"></span>
+          </div>
+        </form>
+      </section>
+
+      <section
+        class="job-status"
+        id="job-status"
+        aria-live="polite"
+        aria-busy="true"
+        hx-target="this"
+      >
+        <p class="empty-state">Loading the latest search job…</p>
+      </section>
+
+      <section class="summary-metrics" aria-label="Search summary metrics">
+        <h2 class="sr-only">Summary metrics</h2>
+        <div class="metric-grid" id="summary-cards">
+          <div class="empty-state">Metrics will appear once a search job finishes.</div>
+        </div>
+      </section>
+
+      <section class="filters" aria-label="Table filters">
         <div class="filter-group">
           <label for="subreddit-filter">Subreddit</label>
           <select id="subreddit-filter">
@@ -142,11 +535,12 @@
             type="search"
             placeholder="Search titles..."
             autocomplete="off"
+            aria-label="Filter by title"
           />
         </div>
         <div class="filter-group">
-          <label>Automation Assessment</label>
-          <div class="filter-chips" id="automation-chips">
+          <label>Automation Signal</label>
+          <div class="filter-chips" id="automation-chips" role="group" aria-label="Automation filter">
             <button class="chip active" data-value="any" type="button">All</button>
             <button class="chip" data-value="true" type="button">Automation</button>
             <button class="chip" data-value="false" type="button">Non-automation</button>
@@ -154,39 +548,61 @@
         </div>
       </section>
 
-      <table id="report-table" aria-live="polite">
-        <thead>
-          <tr>
-            <th scope="col">Subreddit</th>
-            <th scope="col">Title</th>
-            <th scope="col">Score</th>
-            <th scope="col">Comments</th>
-            <th scope="col">Automation Complexity</th>
-            <th scope="col">Required Tools</th>
-            <th scope="col">Details</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
+      <section class="table-wrapper" aria-label="Search results">
+        <table id="report-table" aria-live="polite">
+          <thead>
+            <tr>
+              <th scope="col">Subreddit</th>
+              <th scope="col">Title</th>
+              <th scope="col">Score</th>
+              <th scope="col">Comments</th>
+              <th scope="col">Automation Complexity</th>
+              <th scope="col">Required Tools</th>
+              <th scope="col">Details</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </section>
     </main>
 
-    <div
-      id="report-loader"
-      hx-get="/api/reports"
-      hx-trigger="load"
-      hx-target="#report-loader"
-      hx-swap="none"
-    ></div>
-
     <script>
+      const DEFAULT_SUBREDDITS = ["smallbusiness", "Entrepreneur"];
       const state = {
-        subreddit: "all",
-        complexity: "all",
-        search: "",
-        automation: "any",
+        filters: {
+          subreddit: "all",
+          complexity: "all",
+          search: "",
+          automation: "any",
+        },
+        reports: [],
+        job: null,
+        config: null,
+        pollingHandle: null,
+        subredditOptions: [...DEFAULT_SUBREDDITS],
       };
 
-      let reports = [];
+      const elements = {
+        form: document.getElementById("search-form"),
+        formFeedback: document.getElementById("search-form-feedback"),
+        subredditSelect: document.getElementById("subreddit-select"),
+        newSubredditInput: document.getElementById("new-subreddit"),
+        timeFilterSelect: document.getElementById("time-filter"),
+        postsLimit: document.getElementById("posts-limit"),
+        postsLimitDisplay: document.getElementById("posts-limit-display"),
+        commentsLimit: document.getElementById("comments-limit"),
+        commentsLimitDisplay: document.getElementById("comments-limit-display"),
+        commentsUnlimited: document.getElementById("comments-unlimited"),
+        jobStatus: document.getElementById("job-status"),
+        summaryCards: document.getElementById("summary-cards"),
+        tableBody: document.querySelector("#report-table tbody"),
+        subredditFilter: document.getElementById("subreddit-filter"),
+        complexityFilter: document.getElementById("complexity-filter"),
+        searchFilter: document.getElementById("search-filter"),
+        automationChips: document.querySelectorAll("#automation-chips .chip"),
+        resetFormBtn: document.getElementById("reset-form-btn"),
+        queryInput: document.getElementById("query-input"),
+      };
 
       function escapeHtml(value) {
         const text = String(value ?? "");
@@ -227,29 +643,6 @@
         }
       }
 
-      function applyFilters(item) {
-        if (state.subreddit !== "all" && item.subreddit !== state.subreddit) {
-          return false;
-        }
-        const complexity = item.automation_insight?.automation_complexity || "";
-        if (state.complexity !== "all" && complexity !== state.complexity) {
-          return false;
-        }
-        if (state.automation !== "any") {
-          const isAutomation = Boolean(item.initial_assessment?.is_automation);
-          if (String(isAutomation) !== state.automation) {
-            return false;
-          }
-        }
-        if (state.search) {
-          const title = item.title || "";
-          if (!title.toLowerCase().includes(state.search)) {
-            return false;
-          }
-        }
-        return true;
-      }
-
       function formatTools(tools) {
         if (!Array.isArray(tools) || tools.length === 0) {
           return "—";
@@ -257,10 +650,59 @@
         return tools.join(", ");
       }
 
+      function applyFilters(item) {
+        if (state.filters.subreddit !== "all" && item.subreddit !== state.filters.subreddit) {
+          return false;
+        }
+        const complexity = item.automation_complexity || "";
+        if (state.filters.complexity !== "all" && complexity !== state.filters.complexity) {
+          return false;
+        }
+        const normalizedComplexity = (item.automation_complexity || "").trim().toLowerCase();
+        const hasAutomation = Boolean(normalizedComplexity && normalizedComplexity !== "none");
+        if (state.filters.automation !== "any") {
+          if (state.filters.automation === "true" && !hasAutomation) {
+            return false;
+          }
+          if (state.filters.automation === "false" && hasAutomation) {
+            return false;
+          }
+        }
+        if (state.filters.search) {
+          const title = item.title || "";
+          if (!title.toLowerCase().includes(state.filters.search)) {
+            return false;
+          }
+        }
+        return true;
+      }
+
       function renderTable() {
-        const tbody = document.querySelector("#report-table tbody");
+        const tbody = elements.tableBody;
         tbody.innerHTML = "";
-        const filtered = reports.filter(applyFilters);
+        if (!state.job) {
+          const row = document.createElement("tr");
+          const cell = document.createElement("td");
+          cell.colSpan = 7;
+          cell.className = "empty-state";
+          cell.textContent = "Launch a search to see automation reports.";
+          row.appendChild(cell);
+          tbody.appendChild(row);
+          return;
+        }
+
+        if (state.job.status !== "succeeded") {
+          const row = document.createElement("tr");
+          const cell = document.createElement("td");
+          cell.colSpan = 7;
+          cell.className = "empty-state";
+          cell.textContent = "Reports will populate once the job finishes.";
+          row.appendChild(cell);
+          tbody.appendChild(row);
+          return;
+        }
+
+        const filtered = state.reports.filter(applyFilters);
 
         if (filtered.length === 0) {
           const row = document.createElement("tr");
@@ -275,12 +717,7 @@
 
         for (const report of filtered) {
           const row = document.createElement("tr");
-          const requiredTools = formatTools(report.automation_insight?.required_tools);
-          const rationale = report.initial_assessment?.rationale || "Not provided.";
-          const deepAnalysis =
-            report.automation_insight?.deep_analysis || "No deep analysis available.";
           const safeUrl = report.url ? escapeHtml(report.url) : "#";
-
           row.innerHTML = `
             <td>${escapeHtml(report.subreddit)}</td>
             <td>
@@ -290,15 +727,12 @@
             </td>
             <td>${report.score}</td>
             <td>${report.num_comments}</td>
-            <td>${escapeHtml(report.automation_insight?.automation_complexity || "")}</td>
-            <td>${escapeHtml(requiredTools)}</td>
+            <td>${escapeHtml(report.automation_complexity || "—")}</td>
+            <td>${escapeHtml(formatTools(report.required_tools))}</td>
             <td>
               <details>
-                <summary>Insights</summary>
-                <div><strong>Initial Assessment:</strong> ${escapeHtml(rationale)}</div>
-                <div style="margin-top: 0.5rem;"><strong>Deep Analysis:</strong> ${escapeHtml(
-                  deepAnalysis
-                )}</div>
+                <summary>Insight</summary>
+                <div>${escapeHtml(report.insight_text || "No insight captured.")}</div>
               </details>
             </td>
           `;
@@ -306,63 +740,503 @@
         }
       }
 
-      function initializeFilters() {
-        const subredditFilter = document.getElementById("subreddit-filter");
-        const complexityFilter = document.getElementById("complexity-filter");
-        const searchFilter = document.getElementById("search-filter");
-        const automationChips = document.querySelectorAll("#automation-chips .chip");
-
+      function updateFilterOptions() {
+        populateSelect(elements.subredditFilter, uniqueValues(state.reports, (item) => item.subreddit));
         populateSelect(
-          subredditFilter,
-          uniqueValues(reports, (item) => item.subreddit)
+          elements.complexityFilter,
+          uniqueValues(state.reports, (item) => item.automation_complexity || "").filter(Boolean)
         );
-        populateSelect(
-          complexityFilter,
-          uniqueValues(
-            reports,
-            (item) => item.automation_insight?.automation_complexity || ""
-          ).filter(Boolean)
-        );
+      }
 
-        subredditFilter.addEventListener("change", (event) => {
-          state.subreddit = event.target.value;
+      function bindFilterEvents() {
+        elements.subredditFilter.addEventListener("change", (event) => {
+          state.filters.subreddit = event.target.value;
           renderTable();
         });
-        complexityFilter.addEventListener("change", (event) => {
-          state.complexity = event.target.value;
+        elements.complexityFilter.addEventListener("change", (event) => {
+          state.filters.complexity = event.target.value;
           renderTable();
         });
-        searchFilter.addEventListener("input", (event) => {
-          state.search = event.target.value.trim().toLowerCase();
+        elements.searchFilter.addEventListener("input", (event) => {
+          state.filters.search = event.target.value.trim().toLowerCase();
           renderTable();
         });
-        automationChips.forEach((chip) => {
+        elements.automationChips.forEach((chip) => {
           chip.addEventListener("click", () => {
-            automationChips.forEach((c) => c.classList.remove("active"));
+            elements.automationChips.forEach((c) => c.classList.remove("active"));
             chip.classList.add("active");
-            state.automation = chip.dataset.value;
+            state.filters.automation = chip.dataset.value;
             renderTable();
           });
         });
       }
 
-      document.addEventListener("htmx:afterRequest", (event) => {
-        if (event.target.id !== "report-loader") {
-          return;
+      function setFormFeedback(message, variant = "info") {
+        if (!elements.formFeedback) return;
+        elements.formFeedback.textContent = message || "";
+        elements.formFeedback.dataset.variant = variant;
+      }
+
+      async function fetchJson(url, options = {}) {
+        const config = { ...options };
+        const headers = {
+          Accept: "application/json",
+          ...(options.headers || {}),
+        };
+        if (config.body && !headers["Content-Type"]) {
+          headers["Content-Type"] = "application/json";
         }
-        const responseText = event.detail?.xhr?.responseText;
-        if (!responseText) {
-          return;
+        config.headers = headers;
+        const response = await fetch(url, config);
+        if (!response.ok) {
+          let errorDetail = response.statusText;
+          try {
+            const payload = await response.json();
+            errorDetail = payload.detail || payload.message || JSON.stringify(payload);
+          } catch (error) {
+            // ignore json parse errors
+          }
+          throw new Error(errorDetail || "Unexpected error");
         }
+        if (response.status === 204) {
+          return null;
+        }
+        return response.json();
+      }
+
+      function renderSubredditOptions(selectedValues = []) {
+        const select = elements.subredditSelect;
+        const values = new Set([...(state.subredditOptions || []), ...selectedValues]);
+        state.subredditOptions = Array.from(values).filter(Boolean).sort((a, b) => a.localeCompare(b));
+        select.innerHTML = "";
+        state.subredditOptions.forEach((value) => {
+          const option = document.createElement("option");
+          option.value = value;
+          option.textContent = value;
+          option.selected = selectedValues.includes(value);
+          select.appendChild(option);
+        });
+      }
+
+      function bindSubredditAdder() {
+        const button = document.getElementById("add-subreddit-btn");
+        if (!button) return;
+        button.addEventListener("click", () => {
+          const value = (elements.newSubredditInput.value || "").trim();
+          if (!value) {
+            setFormFeedback("Enter a subreddit name before adding.", "error");
+            return;
+          }
+          const normalized = value.replace(/^r\//i, "");
+          if (!normalized) {
+            setFormFeedback("Subreddit name must contain letters or numbers.", "error");
+            return;
+          }
+          if (!state.subredditOptions.includes(normalized)) {
+            state.subredditOptions.push(normalized);
+          }
+          const selected = Array.from(elements.subredditSelect.selectedOptions).map((opt) => opt.value);
+          renderSubredditOptions([...selected, normalized]);
+          elements.newSubredditInput.value = "";
+          setFormFeedback(`Added r/${normalized}.`, "success");
+        });
+      }
+
+      function updateSliderDisplays() {
+        elements.postsLimitDisplay.textContent = `${elements.postsLimit.value} posts`;
+        if (elements.commentsUnlimited.checked) {
+          elements.commentsLimit.disabled = true;
+          elements.commentsLimitDisplay.textContent = "All comments";
+        } else {
+          elements.commentsLimit.disabled = false;
+          elements.commentsLimitDisplay.textContent = `${elements.commentsLimit.value} comments`;
+        }
+      }
+
+      function bindRangeInputs() {
+        elements.postsLimit.addEventListener("input", updateSliderDisplays);
+        elements.commentsLimit.addEventListener("input", updateSliderDisplays);
+        elements.commentsUnlimited.addEventListener("change", updateSliderDisplays);
+        elements.resetFormBtn.addEventListener("click", () => {
+          setTimeout(() => {
+            updateSliderDisplays();
+            setFormFeedback("Form reset.");
+          }, 0);
+        });
+        updateSliderDisplays();
+      }
+
+      function getSelectedSubreddits() {
+        return Array.from(elements.subredditSelect.selectedOptions).map((option) => option.value);
+      }
+
+      async function launchSearch(payload) {
+        setFormFeedback("Launching search…");
+        const job = await fetchJson("/api/searches", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+        setFormFeedback("Search launched! Monitoring job status…", "success");
+        startPollingJob(job.id);
+      }
+
+      async function handleFormSubmit(event) {
+        event.preventDefault();
         try {
-          reports = JSON.parse(responseText);
+          const subreddits = getSelectedSubreddits();
+          if (subreddits.length === 0) {
+            setFormFeedback("Select at least one subreddit.", "error");
+            return;
+          }
+          const payload = {
+            subreddits,
+            query: elements.queryInput.value,
+            time_filter: elements.timeFilterSelect.value,
+            limit: Number(elements.postsLimit.value),
+            comments_limit: elements.commentsUnlimited.checked
+              ? -1
+              : Number(elements.commentsLimit.value),
+          };
+          if (!payload.query.trim()) {
+            setFormFeedback("Query must not be empty.", "error");
+            return;
+          }
+          await launchSearch(payload);
         } catch (error) {
-          console.error("Failed to parse report payload", error);
+          console.error(error);
+          setFormFeedback(error.message, "error");
+        }
+      }
+      function setJobStatusMessage(message, { busy = false } = {}) {
+        elements.jobStatus.innerHTML = `<p class="empty-state">${escapeHtml(message)}</p>`;
+        elements.jobStatus.setAttribute("aria-busy", busy ? "true" : "false");
+      }
+
+      function formatDate(value) {
+        if (!value) return "—";
+        return new Intl.DateTimeFormat(undefined, {
+          dateStyle: "medium",
+          timeStyle: "short",
+        }).format(new Date(value));
+      }
+
+      function formatDuration(start, end) {
+        if (!start) return "—";
+        const startDate = new Date(start);
+        const endDate = end ? new Date(end) : new Date();
+        const diffMs = Math.max(endDate - startDate, 0);
+        const seconds = Math.floor(diffMs / 1000);
+        const minutes = Math.floor(seconds / 60);
+        const remainingSeconds = seconds % 60;
+        if (minutes > 0) {
+          return `${minutes}m ${remainingSeconds}s`;
+        }
+        return `${seconds}s`;
+      }
+
+      function renderJobStatus() {
+        if (!state.job) {
+          setJobStatusMessage("No completed search jobs yet. Launch one to begin.");
           return;
         }
-        initializeFilters();
+        const job = state.job;
+        const processed = job.stats?.processed_count ?? 0;
+        const total = job.stats?.total_count ?? 0;
+        const progress = total > 0 ? Math.round((processed / total) * 100) : job.status === "succeeded" ? 100 : 0;
+        const progressBar = `<div class="progress-track"><div class="progress-bar" style="width: ${progress}%;"></div></div>`;
+        const elapsed = formatDuration(job.started_at || job.created_at, job.finished_at);
+        const errorBlock = job.error_message
+          ? `<div class="status-detail"><span>Error</span><strong>${escapeHtml(job.error_message)}</strong></div>`
+          : "";
+        const paramsList = `
+          <ul>
+            <li><strong>Subreddits:</strong> ${job.subreddits.map(escapeHtml).join(", ")}</li>
+            <li><strong>Query:</strong> ${escapeHtml(job.query)}</li>
+            <li><strong>Time filter:</strong> ${escapeHtml(job.time_filter)}</li>
+            <li><strong>Limit:</strong> ${job.limit} posts</li>
+            <li><strong>Comments limit:</strong> ${job.comments_limit === -1 ? "All" : job.comments_limit}</li>
+          </ul>
+        `;
+        const actions = [];
+        const isTerminal = ["succeeded", "failed"].includes(job.status);
+        actions.push(
+          `<button class="btn btn-danger" type="button" data-action="cancel" ${
+            isTerminal ? "disabled" : ""
+          } aria-label="Cancel job">Cancel</button>`
+        );
+        actions.push(
+          `<button class="btn btn-secondary" type="button" data-action="retry" aria-label="Retry job">Retry</button>`
+        );
+        actions.push(
+          `<button class="btn btn-secondary" type="button" data-action="refresh" aria-label="Refresh job">Refresh</button>`
+        );
+        elements.jobStatus.innerHTML = `
+          <div class="status-header">
+            <h2>Job #${job.id}</h2>
+            <span class="status-chip" data-status="${job.status}">${escapeHtml(job.status)}</span>
+          </div>
+          ${progressBar}
+          <div class="status-details">
+            <div class="status-detail">
+              <span>Processed</span>
+              <strong>${processed} / ${total || "?"} posts (${progress}%)</strong>
+            </div>
+            <div class="status-detail">
+              <span>Elapsed</span>
+              <strong>${elapsed}</strong>
+            </div>
+            <div class="status-detail">
+              <span>Created</span>
+              <strong>${formatDate(job.created_at)}</strong>
+            </div>
+            <div class="status-detail">
+              <span>Finished</span>
+              <strong>${formatDate(job.finished_at)}</strong>
+            </div>
+            ${errorBlock}
+          </div>
+          <div class="status-detail">
+            <span>Parameters</span>
+            ${paramsList}
+          </div>
+          <div class="status-actions">${actions.join("")}</div>
+        `;
+        elements.jobStatus.setAttribute("aria-busy", job.status === "running" ? "true" : "false");
+      }
+
+      function renderSummaryCards() {
+        if (!state.job || state.job.status !== "succeeded" || state.reports.length === 0) {
+          elements.summaryCards.innerHTML = `<div class="empty-state">No metrics yet. Run a search to populate this section.</div>`;
+          return;
+        }
+        const job = state.job;
+        const totalReports = job.stats?.report_count ?? state.reports.length;
+        const processed = job.stats?.processed_count ?? totalReports;
+        const automationCount = state.reports.filter((report) => {
+          const value = (report.automation_complexity || "").toLowerCase();
+          return value && value !== "none";
+        }).length;
+        const automationPercent = totalReports ? Math.round((automationCount / totalReports) * 100) : 0;
+        const averageScore = job.stats?.average_score;
+        const averageComments = state.reports.length
+          ? state.reports.reduce((sum, report) => sum + (report.num_comments || 0), 0) / state.reports.length
+          : 0;
+        const metrics = [
+          {
+            label: "Total Insights",
+            value: totalReports,
+            footnote: `${processed} processed posts`,
+          },
+          {
+            label: "Automation %",
+            value: `${automationPercent}%`,
+            footnote: `${automationCount} automation-ready posts`,
+            percent: automationPercent,
+          },
+          {
+            label: "Avg Score",
+            value: typeof averageScore === "number" ? averageScore.toFixed(1) : "—",
+            footnote: "Mean Reddit score",
+          },
+          {
+            label: "Avg Comments",
+            value: averageComments.toFixed(1),
+            footnote: "Per reported post",
+          },
+        ];
+        const markup = metrics
+          .map((metric) => {
+            const bar = typeof metric.percent === "number"
+              ? `<div class="metric-bar"><span style="width: ${metric.percent}%"></span></div>`
+              : "";
+            return `
+              <article class="metric-card">
+                <span class="metric-label">${metric.label}</span>
+                <div class="metric-value">${metric.value}</div>
+                <p class="metric-footnote">${metric.footnote}</p>
+                ${bar}
+              </article>
+            `;
+          })
+          .join("");
+        elements.summaryCards.innerHTML = markup;
+      }
+
+      async function hydrateJob(jobId) {
+        try {
+          const job = await fetchJson(`/api/searches/${jobId}`);
+          state.job = job;
+          state.reports = Array.isArray(job.reports) ? job.reports : [];
+          renderSubredditOptions(job.subreddits || []);
+          renderJobStatus();
+          renderSummaryCards();
+          updateFilterOptions();
+          renderTable();
+          prefillForm(job);
+          if (["succeeded", "failed"].includes(job.status) && state.pollingHandle) {
+            clearInterval(state.pollingHandle);
+            state.pollingHandle = null;
+          }
+        } catch (error) {
+          console.error(error);
+          setJobStatusMessage(error.message || "Unable to load job.");
+        }
+      }
+
+      function startPollingJob(jobId) {
+        if (state.pollingHandle) {
+          clearInterval(state.pollingHandle);
+        }
+        hydrateJob(jobId);
+        state.pollingHandle = setInterval(() => hydrateJob(jobId), 5000);
+      }
+
+      async function loadLatestJob() {
+        try {
+          const list = await fetchJson("/api/searches?page=1&page_size=1&order=desc");
+          if (list.items && list.items.length > 0) {
+            startPollingJob(list.items[0].id);
+          } else {
+            state.job = null;
+            state.reports = [];
+            renderTable();
+            renderSummaryCards();
+            setJobStatusMessage("No completed search jobs yet. Launch one to begin.");
+          }
+        } catch (error) {
+          console.error(error);
+          setJobStatusMessage("Unable to load existing jobs.");
+        }
+      }
+
+      async function fetchConfig() {
+        try {
+          const config = await fetchJson("/api/config");
+          state.config = config;
+          const options = config.time_filters?.options || [];
+          if (options.length) {
+            elements.timeFilterSelect.innerHTML = options
+              .map((option) => `<option value="${option}">${option}</option>`)
+              .join("");
+            elements.timeFilterSelect.value = config.time_filters?.default || options[0];
+          }
+          const postsLimit = config.limits?.posts;
+          if (postsLimit) {
+            elements.postsLimit.min = 10;
+            elements.postsLimit.max = postsLimit.max;
+            elements.postsLimit.value = postsLimit.default;
+          }
+          const commentsLimit = config.limits?.comments;
+          if (commentsLimit) {
+            elements.commentsLimit.max = commentsLimit.max;
+            elements.commentsLimit.value = commentsLimit.default;
+          }
+          updateSliderDisplays();
+        } catch (error) {
+          console.error(error);
+          setFormFeedback("Unable to load configuration.", "error");
+        }
+      }
+
+      function ensureSelectValue(select, value) {
+        if (!value) return;
+        const exists = Array.from(select.options).some((option) => option.value === value);
+        if (!exists) {
+          const option = document.createElement("option");
+          option.value = value;
+          option.textContent = value;
+          select.appendChild(option);
+        }
+        select.value = value;
+      }
+
+      function prefillForm(job) {
+        if (!job) {
+          return;
+        }
+        elements.queryInput.value = job.query || elements.queryInput.value;
+        if (job.subreddits) {
+          renderSubredditOptions(job.subreddits);
+        }
+        ensureSelectValue(elements.timeFilterSelect, job.time_filter);
+        if (typeof job.limit === "number") {
+          elements.postsLimit.value = job.limit;
+        }
+        elements.commentsUnlimited.checked = job.comments_limit === -1;
+        if (!elements.commentsUnlimited.checked && typeof job.comments_limit === "number") {
+          elements.commentsLimit.value = job.comments_limit;
+        }
+        updateSliderDisplays();
+      }
+
+      async function cancelJob() {
+        if (!state.job) return;
+        try {
+          await fetchJson(`/api/searches/${state.job.id}`, { method: "DELETE" });
+          setJobStatusMessage("Job cancelled. Start a new search to continue.");
+          state.job = null;
+          state.reports = [];
+          renderSummaryCards();
+          renderTable();
+          if (state.pollingHandle) {
+            clearInterval(state.pollingHandle);
+            state.pollingHandle = null;
+          }
+          loadLatestJob();
+        } catch (error) {
+          console.error(error);
+          setFormFeedback("Unable to cancel job: " + error.message, "error");
+        }
+      }
+
+      async function retryJob() {
+        if (!state.job) return;
+        const payload = {
+          subreddits: state.job.subreddits,
+          query: state.job.query,
+          time_filter: state.job.time_filter,
+          limit: state.job.limit,
+          comments_limit: state.job.comments_limit,
+        };
+        try {
+          await launchSearch(payload);
+        } catch (error) {
+          console.error(error);
+          setFormFeedback("Unable to retry job: " + error.message, "error");
+        }
+      }
+
+      function bindJobStatusActions() {
+        elements.jobStatus.addEventListener("click", (event) => {
+          const button = event.target.closest("button[data-action]");
+          if (!button) {
+            return;
+          }
+          const action = button.dataset.action;
+          if (action === "cancel") {
+            cancelJob();
+          } else if (action === "retry") {
+            retryJob();
+          } else if (action === "refresh" && state.job) {
+            hydrateJob(state.job.id);
+          }
+        });
+      }
+
+      function initialize() {
+        renderSubredditOptions(DEFAULT_SUBREDDITS);
+        bindFilterEvents();
+        bindSubredditAdder();
+        bindRangeInputs();
+        bindJobStatusActions();
+        elements.form.addEventListener("submit", handleFormSubmit);
         renderTable();
-      });
+        renderSummaryCards();
+        fetchConfig();
+        loadLatestJob();
+      }
+
+      document.addEventListener("DOMContentLoaded", initialize);
     </script>
   </body>
 </html>
