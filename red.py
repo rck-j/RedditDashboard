@@ -7,12 +7,13 @@ import json
 import os
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import List, Tuple
 
 import praw
 from dotenv import load_dotenv
 from openai import OpenAI
 
+from src import config as app_config
 from src.services import (
     AnalysisReport,
     AnalyzerDependencies,
@@ -26,7 +27,6 @@ load_dotenv()
 
 
 DEFAULT_OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-PROMPTS_PATH = Path("config/prompts.json")
 
 
 def _require_env(key: str) -> str:
@@ -36,39 +36,7 @@ def _require_env(key: str) -> str:
     return value
 
 
-def _load_prompts(path: Path) -> Dict[str, str]:
-    defaults = {
-        "initial_assessment": (
-            "You are an automation strategist supporting small businesses and "
-            "entrepreneurs. Review the Reddit post details and decide whether it "
-            "indicates a meaningful automation or agent opportunity. Return a "
-            "binary decision and a short explanation."
-        ),
-        "deep_assessment": (
-            "You now have the full Reddit submission (post body plus sampled "
-            "comments). Assess whether an automation or agent solution could "
-            "meaningfully help the author or community. Focus on friction, "
-            "repetition, coordination gaps, and the Move, Minimally ethos so "
-            "computers do the heavy lifting."
-        ),
-    }
-
-    try:
-        with path.open("r", encoding="utf-8") as handle:
-            overrides = json.load(handle)
-    except FileNotFoundError:
-        return defaults
-    except json.JSONDecodeError as exc:
-        print(f"Warning: could not parse prompts file ({exc}); using defaults.")
-        return defaults
-
-    for key, value in overrides.items():
-        if isinstance(value, str) and key in defaults:
-            defaults[key] = value
-    return defaults
-
-
-PROMPTS = _load_prompts(PROMPTS_PATH)
+PROMPTS = app_config.get_prompts()
 
 
 def build_reddit_client() -> praw.Reddit:
@@ -131,20 +99,20 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--time-filter",
-        default="month",
-        choices=["day", "week", "month", "year", "all"],
+        default=app_config.SEARCH_PARAMETERS.default_time_filter,
+        choices=list(app_config.SEARCH_PARAMETERS.time_filters),
         help="Reddit time filter for the search.",
     )
     parser.add_argument(
         "--limit",
         type=int,
-        default=50,
+        default=app_config.SEARCH_PARAMETERS.limit_default,
         help="Maximum posts to retrieve per subreddit.",
     )
     parser.add_argument(
         "--comments-limit",
         type=int,
-        default=5,
+        default=app_config.SEARCH_PARAMETERS.comments_limit_default,
         help="Maximum comments to retrieve during deep analysis (-1 for all).",
     )
     parser.add_argument(
@@ -153,7 +121,26 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Optional destination for saving the JSON report.",
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+    _validate_cli_args(parser, args)
+    return args
+
+
+def _validate_cli_args(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    if args.limit <= 0 or args.limit > app_config.SEARCH_PARAMETERS.limit_max:
+        parser.error(
+            f"--limit must be between 1 and {app_config.SEARCH_PARAMETERS.limit_max}."
+        )
+    if args.comments_limit < -1:
+        parser.error("--comments-limit must be -1 or greater.")
+    if (
+        args.comments_limit != -1
+        and args.comments_limit > app_config.SEARCH_PARAMETERS.comments_limit_max
+    ):
+        parser.error(
+            "--comments-limit must be -1 or less than or equal to "
+            f"{app_config.SEARCH_PARAMETERS.comments_limit_max}."
+        )
 
 
 def main() -> None:

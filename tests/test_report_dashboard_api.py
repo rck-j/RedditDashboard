@@ -6,6 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import SQLModel, Session, create_engine, select
 
+from src import config as app_config
 from src.db.models import JobStatus, PersistedPostReport, SearchJob
 from src.db import session as db_session
 from src.ui import report_dashboard
@@ -185,3 +186,28 @@ def test_list_searches_invalid_order(api_client) -> None:
     response = client.get("/api/searches", params={"order": "sideways"})
 
     assert response.status_code == 422
+
+
+def test_get_app_config_returns_metadata(api_client) -> None:
+    client, _ = api_client
+
+    response = client.get("/api/config")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["time_filters"]["options"] == list(
+        app_config.SEARCH_PARAMETERS.time_filters
+    )
+    assert (
+        payload["limits"]["posts"]["default"]
+        == app_config.SEARCH_PARAMETERS.limit_default
+    )
+    assert (
+        payload["limits"]["posts"]["max"] == app_config.SEARCH_PARAMETERS.limit_max
+    )
+    assert (
+        payload["limits"]["comments"]["max"]
+        == app_config.SEARCH_PARAMETERS.comments_limit_max
+    )
+    prompts = app_config.get_prompts()
+    assert payload["prompts"]["initial_assessment"] == prompts["initial_assessment"]

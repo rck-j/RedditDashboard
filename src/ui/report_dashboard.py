@@ -18,6 +18,7 @@ from sqlalchemy import func
 from sqlmodel import SQLModel, delete, select
 
 from src.api.schemas import (
+    AppConfigResponse,
     PersistedPostReportSchema,
     SearchJobListResponse,
     SearchJobResponse,
@@ -30,6 +31,7 @@ from src.infra.redis import get_redis_client
 from src.infra.search_cache import fetch_cached_job, remember_search_job
 from src.infra.search_jobs import create_search_job
 from src.jobs import search_runner
+from src import config as app_config
 
 try:
     from red import PostReport as BasePostReport
@@ -154,6 +156,13 @@ def read_reports() -> List[PostReport]:
     """Return the parsed report entries as JSON."""
 
     return get_reports()
+
+
+@app.get("/api/config", response_model=AppConfigResponse)
+def read_app_config() -> AppConfigResponse:
+    """Expose shared search and analyzer metadata for the dashboard UI."""
+
+    return AppConfigResponse.model_validate(app_config.get_app_config())
 
 
 def _job_response(
