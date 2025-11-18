@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Sequence
 
-from fastapi import FastAPI, HTTPException, Request, status
+from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field, ValidationError
+from redis.exceptions import RedisError
 from rq import Queue
 from sqlalchemy import func
 from sqlmodel import SQLModel, delete, select
@@ -66,7 +68,8 @@ class PostReport(BasePostReport):
 ROOT_DIR = Path(__file__).resolve().parents[2]
 DATA_PATH = ROOT_DIR / "data" / "report.json"
 TEMPLATES = Jinja2Templates(directory=str(ROOT_DIR / "templates"))
-ALLOWED_TIME_FILTERS = {"day", "week", "month", "year", "all"}
+
+RATE_LIMIT_REQUESTS_PER_MINUTE = 30
 
 app = FastAPI(title="Reddit Automation Report Dashboard")
 redis_client = get_redis_client()
@@ -90,6 +93,13 @@ def _load_json(path: Path) -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail="Invalid report JSON") from exc
 
 
+def _error_detail(code: str, message: str, *, field: str | None = None) -> Dict[str, str]:
+    payload = {"code": code, "message": message}
+    if field:
+        payload["field"] = field
+    return payload
+
+
 def _parse_reports(items: Iterable[Dict[str, Any]]) -> List[PostReport]:
     reports: List[PostReport] = []
     for item in items:
@@ -98,6 +108,29 @@ def _parse_reports(items: Iterable[Dict[str, Any]]) -> List[PostReport]:
         except ValidationError as exc:  # pragma: no cover - runtime protection
             raise HTTPException(status_code=500, detail=str(exc)) from exc
     return reports
+
+
+def enforce_rate_limit(request: Request) -> None:
+    """Naive per-IP rate limiting backed by Redis."""
+
+    identifier = request.client.host if request.client else "anonymous"
+    window = datetime.utcnow().strftime("%Y%m%d%H%M")
+    key = f"rate-limit:{identifier}:{window}"
+    try:
+        hits = redis_client.incr(key)
+        if hits == 1:
+            redis_client.expire(key, 60)
+        if hits > RATE_LIMIT_REQUESTS_PER_MINUTE:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=_error_detail(
+                    "rate_limit_exceeded",
+                    "Too many requests; please wait a moment before retrying.",
+                ),
+            )
+    except RedisError:  # pragma: no cover - network-dependent
+        # Fall back to allowing the request when Redis is unavailable.
+        return
 
 
 @lru_cache(maxsize=1)
@@ -121,38 +154,6 @@ def read_reports() -> List[PostReport]:
     """Return the parsed report entries as JSON."""
 
     return get_reports()
-
-
-def _validate_search_request(payload: SearchRequest) -> SearchRequest:
-    subreddits = [sub.strip() for sub in payload.subreddits if sub.strip()]
-    if not subreddits:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="At least one subreddit is required.",
-        )
-    if payload.time_filter not in ALLOWED_TIME_FILTERS:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Invalid time filter.",
-        )
-    if not payload.query.strip():
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Query must not be empty.",
-        )
-    if payload.limit <= 0:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Limit must be a positive integer.",
-        )
-    if payload.comments_limit < -1:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Comments limit must be -1 or greater.",
-        )
-    payload.subreddits = subreddits
-    payload.query = payload.query.strip()
-    return payload
 
 
 def _job_response(
@@ -205,12 +206,16 @@ def _validate_pagination(page: int, page_size: int) -> None:
     if page <= 0:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Page must be positive.",
+            detail=_error_detail("invalid_page", "Page must be positive.", field="page"),
         )
     if page_size <= 0 or page_size > 100:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Page size must be between 1 and 100.",
+            detail=_error_detail(
+                "invalid_page_size",
+                "Page size must be between 1 and 100.",
+                field="page_size",
+            ),
         )
 
 
@@ -229,10 +234,13 @@ def _fetch_reports(session, job_id: int) -> List[PersistedPostReport]:
     response_model=SearchJobResponse,
     status_code=status.HTTP_201_CREATED,
 )
-def create_search(request: SearchRequest) -> SearchJobResponse:
+def create_search(
+    request: SearchRequest,
+    _: None = Depends(enforce_rate_limit),
+) -> SearchJobResponse:
     """Queue a Reddit search via RQ and return the job metadata."""
 
-    payload = _validate_search_request(request)
+    payload = request
     cached_job = fetch_cached_job(
         redis_client,
         subreddits=payload.subreddits,
@@ -304,7 +312,11 @@ def list_searches(
     if normalized_order not in {"asc", "desc"}:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Order must be 'asc' or 'desc'.",
+            detail=_error_detail(
+                "invalid_order",
+                "Order must be 'asc' or 'desc'.",
+                field="order",
+            ),
         )
 
     with get_session() as session:
