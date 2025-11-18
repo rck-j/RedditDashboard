@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import List, Optional
 
-from sqlalchemy import Column, DateTime, JSON
+from sqlalchemy import Boolean, Column, DateTime, JSON
 from sqlmodel import Field, Relationship, SQLModel
 
 
@@ -52,6 +52,10 @@ class SearchJob(SQLModel, table=True):
     total_count: int = 0
     error_message: Optional[str] = None
     average_score: Optional[float] = None
+    is_deleted: bool = Field(
+        default=False,
+        sa_column=Column(Boolean, nullable=False, default=False),
+    )
     reports: List["PersistedPostReport"] = Relationship(
         back_populates="search_job",
         sa_relationship_kwargs={"cascade": "all, delete-orphan"},
