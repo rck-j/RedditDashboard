@@ -7,3 +7,4 @@ openai
 redis
 rq
 sqlmodel
+prometheus_client

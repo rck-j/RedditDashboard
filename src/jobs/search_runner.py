@@ -13,6 +13,7 @@ from red import PROMPTS, build_openai_client, build_reddit_client
 from src.db.models import JobStatus, PersistedPostReport, SearchJob
 from src.db.session import get_session
 from src.infra.cleanup import purge_expired_jobs
+from src.infra.observability import TelemetryRecorder
 from src.jobs.job_errors import JobError, job_error_from_exception
 from src.services import AnalyzerDependencies, AutomationAnalyzer, PostReport, search_posts
 from src.services.job_stats import build_search_job_stats
@@ -50,11 +51,14 @@ def run(
 
     reddit_client = build_reddit_client()
     openai_client, model_name = build_openai_client()
+    telemetry = TelemetryRecorder(logger=logger, job_id=job.id)
+    telemetry.job_started(queued_at=job.created_at)
     deps = AnalyzerDependencies(
         reddit=reddit_client,
         openai=openai_client,
         openai_model=model_name,
         prompts=PROMPTS,
+        telemetry=telemetry,
     )
     analyzer = AutomationAnalyzer(deps)
     batch: List[PersistedPostReport] = []
@@ -68,6 +72,7 @@ def run(
             query=query,
             time_filter=time_filter,
             limit=limit,
+            telemetry=telemetry,
         ):
             job.total_count += 1
             _commit_job(session, job)
@@ -78,6 +83,12 @@ def run(
             score_total += report.score
             job.average_score = score_total / processed
             _commit_job(session, job)
+            telemetry.record_post_processed(processed)
+            if processed % 10 == 0:
+                telemetry.job_progress(
+                    processed=processed,
+                    total_seen=job.total_count,
+                )
             _flush_batch(session, job, batch)
 
         _flush_batch(session, job, batch, force=True)
@@ -86,6 +97,8 @@ def run(
         job.finished_at = datetime.now(timezone.utc)
         job.stats = build_search_job_stats(session, job)
         _commit_job(session, job)
+        telemetry.job_progress(processed=processed, total_seen=job.total_count)
+        telemetry.job_completed(status="succeeded")
         return str(job.id)
     except Exception as exc:  # pragma: no cover - depends on live APIs
         job_error = job_error_from_exception(exc)
@@ -110,6 +123,7 @@ def run(
             job.error_detail = job_error.model_dump()
             job.finished_at = datetime.now(timezone.utc)
             _commit_job(session, job)
+        telemetry.job_failed(error_code=job_error.code, message=job_error.message)
         raise
     finally:
         session.close()
