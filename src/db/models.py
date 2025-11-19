@@ -51,6 +51,11 @@ class SearchJob(SQLModel, table=True):
     processed_count: int = 0
     total_count: int = 0
     error_message: Optional[str] = None
+    error_detail: Optional[dict] = Field(
+        default=None,
+        sa_column=Column(JSON, nullable=True),
+        description="Structured JobError payload captured when the run fails.",
+    )
     average_score: Optional[float] = None
     is_deleted: bool = Field(
         default=False,

@@ -10,7 +10,7 @@ from typing import Dict, List, Sequence
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 from redis.exceptions import RedisError
 from rq import Queue
 from sqlalchemy import func
@@ -31,6 +31,7 @@ from src.infra.redis import get_redis_client
 from src.infra.search_cache import fetch_cached_job, remember_search_job
 from src.infra.search_jobs import create_search_job
 from src.jobs import search_runner
+from src.jobs.job_errors import JobError
 from src import config as app_config
 from src.services.job_stats import build_search_job_stats
 
@@ -232,6 +233,7 @@ def _job_response(
 ) -> SearchJobResponse:
     stats_payload = _resolve_stats(job, session=session, reports=reports)
     stats = SearchJobStats.model_validate(stats_payload)
+    error_payload = _deserialize_job_error(job)
     return SearchJobResponse(
         id=job.id,
         subreddits=job.subreddits,
@@ -244,6 +246,8 @@ def _job_response(
         started_at=job.started_at,
         finished_at=job.finished_at,
         error_message=job.error_message,
+        error=error_payload,
+        has_partial_results=_has_partial_results(job),
         stats=stats,
         reports=
         [
@@ -253,6 +257,20 @@ def _job_response(
         if reports is not None
         else None,
     )
+
+
+def _deserialize_job_error(job: SearchJob) -> JobError | None:
+    if not job.error_detail:
+        return None
+    try:
+        return JobError.model_validate(job.error_detail)
+    except ValidationError:
+        fallback_message = job.error_message or "Unknown failure"
+        return JobError(code="unknown", message=fallback_message)
+
+
+def _has_partial_results(job: SearchJob) -> bool:
+    return job.status == JobStatus.FAILED and job.processed_count > 0
 
 
 def _resolve_stats(

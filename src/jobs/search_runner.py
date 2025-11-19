@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import logging
 import re
 from typing import List, Sequence
 
@@ -12,8 +13,11 @@ from red import PROMPTS, build_openai_client, build_reddit_client
 from src.db.models import JobStatus, PersistedPostReport, SearchJob
 from src.db.session import get_session
 from src.infra.cleanup import purge_expired_jobs
+from src.jobs.job_errors import JobError, job_error_from_exception
 from src.services import AnalyzerDependencies, AutomationAnalyzer, PostReport, search_posts
 from src.services.job_stats import build_search_job_stats
+
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -40,6 +44,7 @@ def run(
     job.processed_count = 0
     job.total_count = 0
     job.error_message = None
+    job.error_detail = None
     job.average_score = None
     _commit_job(session, job)
 
@@ -55,6 +60,7 @@ def run(
     batch: List[PersistedPostReport] = []
     processed = 0
     score_total = 0
+    job_error: JobError | None = None
     try:
         for summary in search_posts(
             reddit_client,
@@ -82,11 +88,26 @@ def run(
         _commit_job(session, job)
         return str(job.id)
     except Exception as exc:  # pragma: no cover - depends on live APIs
+        job_error = job_error_from_exception(exc)
+        logger.exception(
+            "Search job %s failed (%s): %s",
+            job.id if job else search_job_id,
+            job_error.code,
+            job_error.message,
+        )
+        try:
+            _flush_batch(session, job, batch, force=True)
+        except Exception:  # pragma: no cover - defensive logging
+            logger.exception(
+                "Unable to flush buffered post reports before failing job %s",
+                job.id if job else search_job_id,
+            )
         session.rollback()
         job = session.get(SearchJob, search_job_id)
         if job is not None:
             job.status = JobStatus.FAILED
-            job.error_message = str(exc)
+            job.error_message = job_error.message
+            job.error_detail = job_error.model_dump()
             job.finished_at = datetime.now(timezone.utc)
             _commit_job(session, job)
         raise
