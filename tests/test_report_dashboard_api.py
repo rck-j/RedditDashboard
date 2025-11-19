@@ -153,6 +153,8 @@ def test_create_search_enqueues_job(api_client) -> None:
     assert body["subreddits"] == ["test"]
     assert body["query"] == "agents"
     assert body["stats"]["processed_count"] == 0
+    assert body["stats"]["top_subreddits"] is None
+    assert body["stats"]["top_keywords"] is None
     assert enqueue_calls and enqueue_calls[0]["args"][0] == report_dashboard.search_runner.run
 
 
@@ -188,6 +190,11 @@ def test_read_search_returns_reports(api_client) -> None:
     assert complexity["percentages"]["medium"] == pytest.approx(100.0)
     assert complexity["timeline"][0]["automation_count"] == 1
     assert complexity["timeline"][0]["non_automation_count"] == 0
+    top_subreddits = payload["stats"]["top_subreddits"]
+    assert top_subreddits == [{"subreddit": "test", "count": 1}]
+    top_keywords = payload["stats"]["top_keywords"]
+    assert top_keywords[0]["keyword"] == "example"
+    assert top_keywords[0]["count"] == 1
     assert len(payload["reports"]) == 1
 
 

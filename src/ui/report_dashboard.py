@@ -26,6 +26,8 @@ from src.api.schemas import (
     SearchJobStats,
     SearchJobSummaryStats,
     SearchRequest,
+    TopKeywordStat,
+    TopSubredditStat,
 )
 from src.db.models import JobStatus, PersistedPostReport, SearchJob
 from src.db.session import engine, get_session
@@ -34,7 +36,14 @@ from src.infra.search_cache import fetch_cached_job, remember_search_job
 from src.infra.search_jobs import create_search_job
 from src.jobs import search_runner
 from src import config as app_config
-from src.services.analytics import calculate_complexity_distribution, summarize_reports
+from src.services.analytics import (
+    KeywordFrequency,
+    TopSubredditCount,
+    calculate_complexity_distribution,
+    extract_top_keywords,
+    fetch_top_subreddits,
+    summarize_reports,
+)
 
 try:
     from red import PostReport as BasePostReport
@@ -222,6 +231,8 @@ def _job_response(
     job: SearchJob,
     *,
     reports: Sequence[PersistedPostReport] | None = None,
+    top_subreddits: Sequence[TopSubredditCount] | None = None,
+    top_keywords: Sequence[KeywordFrequency] | None = None,
 ) -> SearchJobResponse:
     report_count = (
         len(reports)
@@ -267,6 +278,23 @@ def _job_response(
         report_count=report_count,
         summary=summary,
         complexity=complexity,
+        top_subreddits=
+        (
+            [
+                TopSubredditStat(subreddit=entry.subreddit, count=entry.count)
+                for entry in top_subreddits
+            ]
+            if top_subreddits is not None
+            else None
+        ),
+        top_keywords=(
+            [
+                TopKeywordStat(keyword=entry.keyword, count=entry.count)
+                for entry in top_keywords
+            ]
+            if top_keywords is not None
+            else None
+        ),
     )
     return SearchJobResponse(
         id=job.id,
@@ -389,9 +417,18 @@ def read_search(job_id: int) -> SearchJobResponse:
     with get_session() as session:
         job = _get_job_or_404(session, job_id)
         reports: List[PersistedPostReport] | None = None
+        top_subreddits = None
+        top_keywords = None
         if job.status == JobStatus.SUCCEEDED:
             reports = _fetch_reports(session, job.id)
-        return _job_response(job, reports=reports)
+            top_subreddits = fetch_top_subreddits(session, job_id=job.id)
+            top_keywords = extract_top_keywords(reports)
+        return _job_response(
+            job,
+            reports=reports,
+            top_subreddits=top_subreddits,
+            top_keywords=top_keywords,
+        )
 
 
 @app.get("/api/searches", response_model=SearchJobListResponse)

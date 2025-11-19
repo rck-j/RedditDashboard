@@ -2,8 +2,14 @@ from datetime import datetime, timezone, timedelta
 
 import pytest
 
+from sqlmodel import SQLModel, Session, create_engine
+
 from src.db.models import PersistedPostReport
-from src.services.analytics import calculate_complexity_distribution
+from src.services.analytics import (
+    calculate_complexity_distribution,
+    extract_top_keywords,
+    fetch_top_subreddits,
+)
 
 
 def _report(**overrides) -> PersistedPostReport:
@@ -76,3 +82,41 @@ def test_calculate_complexity_distribution_timeline() -> None:
     assert snapshot.timeline[1].bucket == "2024-01-02"
     assert snapshot.timeline[1].automation_count == 1
     assert snapshot.timeline[1].non_automation_count == 1
+
+
+def test_fetch_top_subreddits_returns_sorted_counts(tmp_path) -> None:
+    engine = create_engine(
+        f"sqlite:///{tmp_path/'analytics.db'}",
+        connect_args={"check_same_thread": False},
+    )
+    SQLModel.metadata.create_all(engine)
+    with Session(engine) as session:
+        session.add_all(
+            [
+                _report(search_job_id=1, submission_id="1", subreddit="alpha"),
+                _report(search_job_id=1, submission_id="2", subreddit="alpha"),
+                _report(search_job_id=1, submission_id="3", subreddit="beta"),
+                _report(search_job_id=2, submission_id="4", subreddit="gamma"),
+            ]
+        )
+        session.commit()
+
+        results = fetch_top_subreddits(session, job_id=1, limit=2)
+
+        assert [entry.subreddit for entry in results] == ["alpha", "beta"]
+        assert [entry.count for entry in results] == [2, 1]
+
+
+def test_extract_top_keywords_filters_stop_words_and_sorts() -> None:
+    reports = [
+        _report(
+            title="Agent automation agent",
+            insight_text="Agents build automation tools for business",
+        ),
+        _report(title="Automation ideas", insight_text="agent agent support"),
+    ]
+
+    keywords = extract_top_keywords(reports, limit=3)
+
+    assert [entry.keyword for entry in keywords] == ["agent", "automation", "agents"]
+    assert [entry.count for entry in keywords] == [4, 3, 1]

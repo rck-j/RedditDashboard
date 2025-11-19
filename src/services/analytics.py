@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Sequence
+import re
+from typing import Iterable, Sequence
+
+from sqlalchemy import func
+from sqlmodel import Session, select
 
 from src.db.models import PersistedPostReport
 
@@ -31,6 +35,22 @@ class ComplexityDistribution:
     counts: dict[str, int]
     percentages: dict[str, float]
     timeline: Sequence[ComplexityTimelineBucket] | None = None
+
+
+@dataclass(frozen=True)
+class TopSubredditCount:
+    """Top subreddit counts for a search job."""
+
+    subreddit: str
+    count: int
+
+
+@dataclass(frozen=True)
+class KeywordFrequency:
+    """Keyword frequency entry calculated from persisted reports."""
+
+    keyword: str
+    count: int
 
 
 @dataclass(frozen=True)
@@ -156,6 +176,55 @@ def calculate_complexity_distribution(
     )
 
 
+def fetch_top_subreddits(
+    session: Session,
+    *,
+    job_id: int,
+    limit: int = 5,
+) -> list[TopSubredditCount]:
+    """Return the most common subreddits for a search job.
+
+    Results are sorted by descending count, then alphabetically for stability.
+    """
+
+    stmt = (
+        select(
+            PersistedPostReport.subreddit,
+            func.count(PersistedPostReport.id).label("subreddit_count"),
+        )
+        .where(PersistedPostReport.search_job_id == job_id)
+        .group_by(PersistedPostReport.subreddit)
+        .order_by(
+            func.count(PersistedPostReport.id).desc(),
+            PersistedPostReport.subreddit.asc(),
+        )
+        .limit(limit)
+    )
+    rows = session.exec(stmt).all()
+    return [TopSubredditCount(subreddit=row[0], count=int(row[1] or 0)) for row in rows]
+
+
+def extract_top_keywords(
+    reports: Sequence[PersistedPostReport],
+    *,
+    limit: int = 10,
+) -> list[KeywordFrequency]:
+    """Return the most frequent keywords derived from persisted reports."""
+
+    if not reports:
+        return []
+
+    counter: Counter[str] = Counter()
+    for report in reports:
+        counter.update(_tokenize(report.title))
+        counter.update(_tokenize(getattr(report, "insight_text", "")))
+
+    most_common = counter.most_common()
+    most_common.sort(key=lambda entry: (-entry[1], entry[0]))
+    trimmed = most_common[:limit]
+    return [KeywordFrequency(keyword=word, count=count) for word, count in trimmed]
+
+
 def _is_automation_candidate(report: PersistedPostReport) -> bool:
     complexity = _normalized_complexity(report.automation_complexity)
     return bool(complexity) and complexity not in {"unknown", "n/a"}
@@ -166,15 +235,73 @@ def _normalized_complexity(value: str | None) -> str:
     return normalized or "unknown"
 
 
+def _tokenize(text: str | None) -> Iterable[str]:
+    if not text:
+        return []
+    tokens: list[str] = []
+    for match in TOKEN_PATTERN.findall(text.lower()):
+        token = match.strip("'")
+        if not token or token in STOP_WORDS or token.isdigit() or len(token) < 3:
+            continue
+        tokens.append(token)
+    return tokens
+
+
 __all__ = [
     "AUTOMATION_COMPLEXITY_LEVELS",
     "ComplexityDistribution",
     "ComplexityTimelineBucket",
+    "KeywordFrequency",
     "SummaryMetrics",
+    "TopSubredditCount",
     "calculate_average_comment_count",
     "calculate_average_score",
     "calculate_complexity_distribution",
     "calculate_automation_percentage",
     "calculate_total_posts",
+    "extract_top_keywords",
+    "fetch_top_subreddits",
     "summarize_reports",
 ]
+TOKEN_PATTERN = re.compile(r"[A-Za-z0-9']+")
+STOP_WORDS: frozenset[str] = frozenset(
+    {
+        "a",
+        "about",
+        "and",
+        "are",
+        "as",
+        "at",
+        "be",
+        "but",
+        "by",
+        "can",
+        "for",
+        "from",
+        "how",
+        "in",
+        "into",
+        "is",
+        "it",
+        "its",
+        "of",
+        "on",
+        "or",
+        "our",
+        "that",
+        "the",
+        "their",
+        "this",
+        "to",
+        "with",
+        "what",
+        "when",
+        "where",
+        "which",
+        "who",
+        "why",
+        "will",
+        "you",
+        "your",
+    }
+)
