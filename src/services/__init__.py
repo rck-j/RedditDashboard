@@ -11,6 +11,14 @@ from .analyzer import (
     search_posts,
     summarize_post,
 )
+from .analytics import (
+    SummaryMetrics,
+    calculate_average_comment_count,
+    calculate_average_score,
+    calculate_automation_percentage,
+    calculate_total_posts,
+    summarize_reports,
+)
 
 __all__ = [
     "AnalysisReport",
@@ -19,7 +27,13 @@ __all__ = [
     "AutomationInsight",
     "InitialAssessment",
     "PostReport",
+    "SummaryMetrics",
+    "calculate_average_comment_count",
+    "calculate_average_score",
+    "calculate_automation_percentage",
+    "calculate_total_posts",
     "fetch_full_post",
+    "summarize_reports",
     "search_posts",
     "summarize_post",
 ]

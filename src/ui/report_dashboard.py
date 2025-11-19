@@ -22,6 +22,7 @@ from src.api.schemas import (
     SearchJobListResponse,
     SearchJobResponse,
     SearchJobStats,
+    SearchJobSummaryStats,
     SearchRequest,
 )
 from src.db.models import JobStatus, PersistedPostReport, SearchJob
@@ -31,6 +32,7 @@ from src.infra.search_cache import fetch_cached_job, remember_search_job
 from src.infra.search_jobs import create_search_job
 from src.jobs import search_runner
 from src import config as app_config
+from src.services.analytics import summarize_reports
 
 try:
     from red import PostReport as BasePostReport
@@ -224,11 +226,22 @@ def _job_response(
         if reports is not None
         else (job.processed_count if job.status == JobStatus.SUCCEEDED else 0)
     )
+    summary = None
+    if reports is not None:
+        summary_metrics = summarize_reports(reports)
+        summary = SearchJobSummaryStats(
+            total_posts=summary_metrics.total_posts,
+            automation_percentage=summary_metrics.automation_percentage,
+            average_score=summary_metrics.average_score,
+            average_comment_count=summary_metrics.average_comment_count,
+        )
+
     stats = SearchJobStats(
         processed_count=job.processed_count,
         total_count=job.total_count,
         average_score=job.average_score,
         report_count=report_count,
+        summary=summary,
     )
     return SearchJobResponse(
         id=job.id,
