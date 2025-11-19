@@ -9,6 +9,7 @@ from typing import List
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from src.db.models import JobStatus
+from src.services.analytics import AUTOMATION_COMPLEXITY_LEVELS
 from src.config import SEARCH_PARAMETERS
 
 DEFAULT_SUBREDDITS = ("smallbusiness", "Entrepreneur")
@@ -161,6 +162,39 @@ class SearchJobSummaryStats(BaseModel):
     average_comment_count: float | None = None
 
 
+class ComplexityTimelineBucket(BaseModel):
+    """Automation vs. non-automation counts per UTC date bucket."""
+
+    bucket: str = Field(description="ISO date (YYYY-MM-DD) rounded in UTC")
+    automation_count: int = Field(
+        description="Reports whose complexity matches automation-ready values."
+    )
+    non_automation_count: int = Field(
+        description="Reports lacking concrete automation detail (unknown / n/a)."
+    )
+
+
+class ComplexityDistributionStats(BaseModel):
+    """Normalized automation complexity counts/percentages for a job."""
+
+    total: int = Field(description="Total number of persisted reports.")
+    counts: dict[str, int] = Field(
+        description=(
+            "Number of reports per normalized automation complexity value."
+            " Frontend charts expect keys at least for: "
+            + ", ".join(AUTOMATION_COMPLEXITY_LEVELS)
+            + "."
+        )
+    )
+    percentages: dict[str, float] = Field(
+        description="Percentage share (0-100) for each automation complexity key."
+    )
+    timeline: List[ComplexityTimelineBucket] | None = Field(
+        default=None,
+        description="Optional automation vs non-automation counts per UTC date bucket.",
+    )
+
+
 class SearchJobStats(BaseModel):
     """Aggregated counters for a given search job."""
 
@@ -169,6 +203,7 @@ class SearchJobStats(BaseModel):
     average_score: float | None = None
     report_count: int
     summary: SearchJobSummaryStats | None = None
+    complexity: ComplexityDistributionStats | None = None
 
 
 class SearchJobResponse(BaseModel):
@@ -202,6 +237,8 @@ class SearchJobListResponse(BaseModel):
 
 __all__ = [
     "AppConfigResponse",
+    "ComplexityDistributionStats",
+    "ComplexityTimelineBucket",
     "LimitMetadata",
     "PersistedPostReportSchema",
     "SearchJobListResponse",

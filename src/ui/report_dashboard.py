@@ -18,6 +18,8 @@ from sqlmodel import SQLModel, delete, select
 
 from src.api.schemas import (
     AppConfigResponse,
+    ComplexityDistributionStats,
+    ComplexityTimelineBucket,
     PersistedPostReportSchema,
     SearchJobListResponse,
     SearchJobResponse,
@@ -32,7 +34,7 @@ from src.infra.search_cache import fetch_cached_job, remember_search_job
 from src.infra.search_jobs import create_search_job
 from src.jobs import search_runner
 from src import config as app_config
-from src.services.analytics import summarize_reports
+from src.services.analytics import calculate_complexity_distribution, summarize_reports
 
 try:
     from red import PostReport as BasePostReport
@@ -227,6 +229,7 @@ def _job_response(
         else (job.processed_count if job.status == JobStatus.SUCCEEDED else 0)
     )
     summary = None
+    complexity = None
     if reports is not None:
         summary_metrics = summarize_reports(reports)
         summary = SearchJobSummaryStats(
@@ -236,12 +239,34 @@ def _job_response(
             average_comment_count=summary_metrics.average_comment_count,
         )
 
+        complexity_snapshot = calculate_complexity_distribution(
+            reports, include_timeline=True
+        )
+        timeline = (
+            [
+                ComplexityTimelineBucket(
+                    bucket=entry.bucket,
+                    automation_count=entry.automation_count,
+                    non_automation_count=entry.non_automation_count,
+                )
+                for entry in (complexity_snapshot.timeline or [])
+            ]
+            or None
+        )
+        complexity = ComplexityDistributionStats(
+            total=complexity_snapshot.total,
+            counts=complexity_snapshot.counts,
+            percentages=complexity_snapshot.percentages,
+            timeline=timeline,
+        )
+
     stats = SearchJobStats(
         processed_count=job.processed_count,
         total_count=job.total_count,
         average_score=job.average_score,
         report_count=report_count,
         summary=summary,
+        complexity=complexity,
     )
     return SearchJobResponse(
         id=job.id,
