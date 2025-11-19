@@ -13,6 +13,7 @@ from src.db.models import JobStatus, PersistedPostReport, SearchJob
 from src.db.session import get_session
 from src.infra.cleanup import purge_expired_jobs
 from src.services import AnalyzerDependencies, AutomationAnalyzer, PostReport, search_posts
+from src.services.job_stats import build_search_job_stats
 
 load_dotenv()
 
@@ -77,6 +78,7 @@ def run(
 
         job.status = JobStatus.SUCCEEDED
         job.finished_at = datetime.now(timezone.utc)
+        job.stats = build_search_job_stats(session, job)
         _commit_job(session, job)
         return str(job.id)
     except Exception as exc:  # pragma: no cover - depends on live APIs

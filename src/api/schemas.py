@@ -234,7 +234,7 @@ class ToolStat(BaseModel):
 
 
 class SearchJobStats(BaseModel):
-    """Aggregated counters for a given search job."""
+    """Aggregated counters and derived analytics for a search job."""
 
     processed_count: int
     total_count: int
@@ -243,8 +243,8 @@ class SearchJobStats(BaseModel):
     summary: SearchJobSummaryStats | None = None
     complexity: ComplexityDistributionStats | None = None
     timeline: TimelineStats | None = None
-    top_subreddits: List[TopSubredditStat] | None = None
-    top_keywords: List[TopKeywordStat] | None = None
+    subreddits: List[TopSubredditStat] | None = None
+    keywords: List[TopKeywordStat] | None = None
     tools: List[ToolStat] | None = None
 
 
