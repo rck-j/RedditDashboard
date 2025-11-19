@@ -7,10 +7,12 @@ import json
 import os
 from typing import Iterable, List, Sequence
 
+from pydantic import ValidationError
 from redis import Redis
 
+from src.api.schemas import SearchJobResponse
 from src.db.models import JobStatus
-from src.infra.search_jobs import SearchJob, get_search_job
+from src.infra.search_jobs import get_search_job
 
 CACHE_PREFIX = "search-jobs"
 DEFAULT_CACHE_TTL_SECONDS = 3600
@@ -54,7 +56,21 @@ def _cache_key(normalized_payload: str) -> str:
     return f"{CACHE_PREFIX}:{digest}"
 
 
-def fetch_cached_job(
+def _decode_cached_value(blob: bytes | str | None) -> dict | None:
+    if not blob:
+        return None
+    if isinstance(blob, bytes):
+        try:
+            blob = blob.decode("utf-8")
+        except UnicodeDecodeError:
+            return None
+    try:
+        return json.loads(blob)
+    except json.JSONDecodeError:
+        return None
+
+
+def fetch_cached_job_response(
     redis_client: Redis,
     *,
     subreddits: Sequence[str],
@@ -62,8 +78,8 @@ def fetch_cached_job(
     time_filter: str,
     limit: int,
     comments_limit: int,
-) -> SearchJob | None:
-    """Return a cached job for the provided parameters when available."""
+) -> SearchJobResponse | None:
+    """Return a cached job response when available and still valid."""
 
     normalized = _normalize_payload(
         subreddits=subreddits,
@@ -73,17 +89,18 @@ def fetch_cached_job(
         comments_limit=comments_limit,
     )
     cache_key = _cache_key(normalized)
-    cached_job_id = redis_client.get(cache_key)
-    if not cached_job_id:
+    cached_payload = _decode_cached_value(redis_client.get(cache_key))
+    if not cached_payload:
         return None
+
     try:
-        job_id = int(cached_job_id)
-    except (TypeError, ValueError):
+        job_response = SearchJobResponse.model_validate(cached_payload)
+    except ValidationError:
         redis_client.delete(cache_key)
         return None
 
     try:
-        job = get_search_job(job_id)
+        job = get_search_job(job_response.id)
     except RuntimeError:
         redis_client.delete(cache_key)
         return None
@@ -92,20 +109,21 @@ def fetch_cached_job(
         redis_client.delete(cache_key)
         return None
 
-    return job
+    return job_response
 
 
-def remember_search_job(
+def remember_search_job_response(
     redis_client: Redis,
     *,
-    job_id: int,
+    job_response: SearchJobResponse,
     subreddits: Sequence[str],
     query: str,
     time_filter: str,
     limit: int,
     comments_limit: int,
+    include_reports: bool = False,
 ) -> None:
-    """Persist job metadata in Redis so duplicate requests can be skipped."""
+    """Persist serialized job metadata to Redis for duplicate detection."""
 
     ttl = _ttl_seconds()
     if ttl == 0:
@@ -119,10 +137,13 @@ def remember_search_job(
         comments_limit=comments_limit,
     )
     cache_key = _cache_key(normalized)
-    redis_client.setex(cache_key, ttl, str(job_id))
+    payload = job_response
+    if not include_reports:
+        payload = job_response.model_copy(update={"reports": None})
+    redis_client.setex(cache_key, ttl, payload.model_dump_json())
 
 
 __all__ = [
-    "fetch_cached_job",
-    "remember_search_job",
+    "fetch_cached_job_response",
+    "remember_search_job_response",
 ]
