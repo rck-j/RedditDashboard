@@ -14,23 +14,15 @@ from pydantic import BaseModel, Field
 from redis.exceptions import RedisError
 from rq import Queue
 from sqlalchemy import func
-from sqlmodel import SQLModel, delete, select
+from sqlmodel import SQLModel, Session, delete, select
 
 from src.api.schemas import (
     AppConfigResponse,
-    ComplexityDistributionStats,
-    ComplexityTimelineBucket,
     PersistedPostReportSchema,
     SearchJobListResponse,
     SearchJobResponse,
     SearchJobStats,
-    SearchJobSummaryStats,
     SearchRequest,
-    TimelineBucketStat,
-    TimelineStats,
-    TopKeywordStat,
-    ToolStat,
-    TopSubredditStat,
 )
 from src.db.models import JobStatus, PersistedPostReport, SearchJob
 from src.db.session import engine, get_session
@@ -39,17 +31,7 @@ from src.infra.search_cache import fetch_cached_job, remember_search_job
 from src.infra.search_jobs import create_search_job
 from src.jobs import search_runner
 from src import config as app_config
-from src.services.analytics import (
-    KeywordFrequency,
-    ToolFrequency,
-    TopSubredditCount,
-    build_timeline,
-    calculate_complexity_distribution,
-    calculate_tool_frequencies,
-    extract_top_keywords,
-    fetch_top_subreddits,
-    summarize_reports,
-)
+from src.services.job_stats import build_search_job_stats
 
 try:
     from red import PostReport as BasePostReport
@@ -241,99 +223,11 @@ def read_app_config() -> AppConfigResponse:
 def _job_response(
     job: SearchJob,
     *,
+    session: Session | None = None,
     reports: Sequence[PersistedPostReport] | None = None,
-    top_subreddits: Sequence[TopSubredditCount] | None = None,
-    top_keywords: Sequence[KeywordFrequency] | None = None,
-    tool_frequencies: Sequence[ToolFrequency] | None = None,
 ) -> SearchJobResponse:
-    report_count = (
-        len(reports)
-        if reports is not None
-        else (job.processed_count if job.status == JobStatus.SUCCEEDED else 0)
-    )
-    summary = None
-    complexity = None
-    timeline = None
-    if reports is not None:
-        summary_metrics = summarize_reports(reports)
-        summary = SearchJobSummaryStats(
-            total_posts=summary_metrics.total_posts,
-            automation_percentage=summary_metrics.automation_percentage,
-            average_score=summary_metrics.average_score,
-            average_comment_count=summary_metrics.average_comment_count,
-        )
-
-        complexity_snapshot = calculate_complexity_distribution(
-            reports, include_timeline=True
-        )
-        complexity_timeline = (
-            [
-                ComplexityTimelineBucket(
-                    bucket=entry.bucket,
-                    automation_count=entry.automation_count,
-                    non_automation_count=entry.non_automation_count,
-                )
-                for entry in (complexity_snapshot.timeline or [])
-            ]
-            or None
-        )
-        complexity = ComplexityDistributionStats(
-            total=complexity_snapshot.total,
-            counts=complexity_snapshot.counts,
-            percentages=complexity_snapshot.percentages,
-            timeline=complexity_timeline,
-        )
-
-        timeline_buckets = build_timeline(reports, bucket_size="daily")
-        timeline = (
-            TimelineStats(
-                bucket_size="daily",
-                buckets=[
-                    TimelineBucketStat(
-                        bucket_start=entry.bucket_start,
-                        bucket_end=entry.bucket_end,
-                        total_posts=entry.total_posts,
-                        automation_posts=entry.automation_posts,
-                    )
-                    for entry in timeline_buckets
-                ],
-            )
-            if timeline_buckets
-            else None
-        )
-
-    stats = SearchJobStats(
-        processed_count=job.processed_count,
-        total_count=job.total_count,
-        average_score=job.average_score,
-        report_count=report_count,
-        summary=summary,
-        complexity=complexity,
-        timeline=timeline,
-        top_subreddits=
-        (
-            [
-                TopSubredditStat(subreddit=entry.subreddit, count=entry.count)
-                for entry in top_subreddits
-            ]
-            if top_subreddits is not None
-            else None
-        ),
-        top_keywords=(
-            [
-                TopKeywordStat(keyword=entry.keyword, count=entry.count)
-                for entry in top_keywords
-            ]
-            if top_keywords is not None
-            else None
-        ),
-        tools=(
-            [ToolStat(label=entry.label, count=entry.count)
-             for entry in tool_frequencies]
-            if tool_frequencies is not None
-            else None
-        ),
-    )
+    stats_payload = _resolve_stats(job, session=session, reports=reports)
+    stats = SearchJobStats.model_validate(stats_payload)
     return SearchJobResponse(
         id=job.id,
         subreddits=job.subreddits,
@@ -355,6 +249,40 @@ def _job_response(
         if reports is not None
         else None,
     )
+
+
+def _resolve_stats(
+    job: SearchJob,
+    *,
+    session: Session | None = None,
+    reports: Sequence[PersistedPostReport] | None = None,
+) -> dict:
+    if job.status == JobStatus.SUCCEEDED:
+        if job.stats:
+            return job.stats
+        active_session = session
+        owns_session = False
+        if active_session is None:
+            active_session = get_session()
+            owns_session = True
+        try:
+            return build_search_job_stats(active_session, job, reports=reports)
+        finally:
+            if owns_session and active_session is not None:
+                active_session.close()
+
+    return {
+        "processed_count": job.processed_count,
+        "total_count": job.total_count,
+        "average_score": job.average_score,
+        "report_count": 0,
+        "summary": None,
+        "complexity": None,
+        "timeline": None,
+        "subreddits": None,
+        "keywords": None,
+        "tools": None,
+    }
 
 
 def _get_job_or_404(session, job_id: int) -> SearchJob:
@@ -455,21 +383,9 @@ def read_search(job_id: int) -> SearchJobResponse:
     with get_session() as session:
         job = _get_job_or_404(session, job_id)
         reports: List[PersistedPostReport] | None = None
-        top_subreddits = None
-        top_keywords = None
-        tool_frequencies = None
         if job.status == JobStatus.SUCCEEDED:
             reports = _fetch_reports(session, job.id)
-            top_subreddits = fetch_top_subreddits(session, job_id=job.id)
-            top_keywords = extract_top_keywords(reports)
-            tool_frequencies = calculate_tool_frequencies(reports)
-        return _job_response(
-            job,
-            reports=reports,
-            top_subreddits=top_subreddits,
-            top_keywords=top_keywords,
-            tool_frequencies=tool_frequencies,
-        )
+        return _job_response(job, session=session, reports=reports)
 
 
 @app.get("/api/searches", response_model=SearchJobListResponse)
@@ -518,7 +434,7 @@ def list_searches(
             total=int(total or 0),
             page=page,
             page_size=page_size,
-            items=[_job_response(job) for job in jobs],
+            items=[_job_response(job, session=session) for job in jobs],
         )
 
 

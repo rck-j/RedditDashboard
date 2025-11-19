@@ -60,6 +60,11 @@ class SearchJob(SQLModel, table=True):
         back_populates="search_job",
         sa_relationship_kwargs={"cascade": "all, delete-orphan"},
     )
+    stats: dict | None = Field(
+        default=None,
+        sa_column=Column(JSON, nullable=True),
+        description="Cached analytics snapshot for the completed job.",
+    )
 
 
 class PersistedPostReport(SQLModel, table=True):
