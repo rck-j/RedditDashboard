@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict
+from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import re
@@ -50,6 +51,14 @@ class KeywordFrequency:
     """Keyword frequency entry calculated from persisted reports."""
 
     keyword: str
+    count: int
+
+
+@dataclass(frozen=True)
+class ToolFrequency:
+    """Frequency map entry for automation tools required across reports."""
+
+    label: str
     count: int
 
 
@@ -225,6 +234,32 @@ def extract_top_keywords(
     return [KeywordFrequency(keyword=word, count=count) for word, count in trimmed]
 
 
+def calculate_tool_frequencies(
+    reports: Sequence[PersistedPostReport],
+) -> list[ToolFrequency]:
+    """Return normalized tool usage counts for a collection of reports."""
+
+    if not reports:
+        return []
+
+    counter: Counter[str] = Counter()
+    for report in reports:
+        for raw_tool in getattr(report, "required_tools", []) or []:
+            if raw_tool is None:
+                continue
+            parts = TOOL_SPLIT_PATTERN.split(raw_tool)
+            if not parts:
+                parts = [raw_tool]
+            for part in parts:
+                normalized = (part or "").strip().lower()
+                if not normalized:
+                    continue
+                counter[normalized] += 1
+
+    entries = sorted(counter.items(), key=lambda item: (-item[1], item[0]))
+    return [ToolFrequency(label=label, count=count) for label, count in entries]
+
+
 def _is_automation_candidate(report: PersistedPostReport) -> bool:
     complexity = _normalized_complexity(report.automation_complexity)
     return bool(complexity) and complexity not in {"unknown", "n/a"}
@@ -259,11 +294,13 @@ __all__ = [
     "calculate_complexity_distribution",
     "calculate_automation_percentage",
     "calculate_total_posts",
+    "calculate_tool_frequencies",
     "extract_top_keywords",
     "fetch_top_subreddits",
     "summarize_reports",
 ]
 TOKEN_PATTERN = re.compile(r"[A-Za-z0-9']+")
+TOOL_SPLIT_PATTERN = re.compile(r"(?:/|,|\+|&|\band\b)", re.IGNORECASE)
 STOP_WORDS: frozenset[str] = frozenset(
     {
         "a",

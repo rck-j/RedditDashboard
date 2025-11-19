@@ -27,6 +27,7 @@ from src.api.schemas import (
     SearchJobSummaryStats,
     SearchRequest,
     TopKeywordStat,
+    ToolStat,
     TopSubredditStat,
 )
 from src.db.models import JobStatus, PersistedPostReport, SearchJob
@@ -38,8 +39,10 @@ from src.jobs import search_runner
 from src import config as app_config
 from src.services.analytics import (
     KeywordFrequency,
+    ToolFrequency,
     TopSubredditCount,
     calculate_complexity_distribution,
+    calculate_tool_frequencies,
     extract_top_keywords,
     fetch_top_subreddits,
     summarize_reports,
@@ -233,6 +236,7 @@ def _job_response(
     reports: Sequence[PersistedPostReport] | None = None,
     top_subreddits: Sequence[TopSubredditCount] | None = None,
     top_keywords: Sequence[KeywordFrequency] | None = None,
+    tool_frequencies: Sequence[ToolFrequency] | None = None,
 ) -> SearchJobResponse:
     report_count = (
         len(reports)
@@ -293,6 +297,12 @@ def _job_response(
                 for entry in top_keywords
             ]
             if top_keywords is not None
+            else None
+        ),
+        tools=(
+            [ToolStat(label=entry.label, count=entry.count)
+             for entry in tool_frequencies]
+            if tool_frequencies is not None
             else None
         ),
     )
@@ -419,15 +429,18 @@ def read_search(job_id: int) -> SearchJobResponse:
         reports: List[PersistedPostReport] | None = None
         top_subreddits = None
         top_keywords = None
+        tool_frequencies = None
         if job.status == JobStatus.SUCCEEDED:
             reports = _fetch_reports(session, job.id)
             top_subreddits = fetch_top_subreddits(session, job_id=job.id)
             top_keywords = extract_top_keywords(reports)
+            tool_frequencies = calculate_tool_frequencies(reports)
         return _job_response(
             job,
             reports=reports,
             top_subreddits=top_subreddits,
             top_keywords=top_keywords,
+            tool_frequencies=tool_frequencies,
         )
 
 

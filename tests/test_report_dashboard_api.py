@@ -195,6 +195,8 @@ def test_read_search_returns_reports(api_client) -> None:
     top_keywords = payload["stats"]["top_keywords"]
     assert top_keywords[0]["keyword"] == "example"
     assert top_keywords[0]["count"] == 1
+    tools = payload["stats"]["tools"]
+    assert tools == [{"label": "tool", "count": 1}]
     assert len(payload["reports"]) == 1
 
 

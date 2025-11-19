@@ -7,6 +7,7 @@ from sqlmodel import SQLModel, Session, create_engine
 from src.db.models import PersistedPostReport
 from src.services.analytics import (
     calculate_complexity_distribution,
+    calculate_tool_frequencies,
     extract_top_keywords,
     fetch_top_subreddits,
 )
@@ -120,3 +121,15 @@ def test_extract_top_keywords_filters_stop_words_and_sorts() -> None:
 
     assert [entry.keyword for entry in keywords] == ["agent", "automation", "agents"]
     assert [entry.count for entry in keywords] == [4, 3, 1]
+
+
+def test_calculate_tool_frequencies_sorts_and_normalizes() -> None:
+    reports = [
+        _report(required_tools=["Zapier", "slack", "Zapier"]),
+        _report(required_tools=["Make", "slack / email"]),
+    ]
+
+    stats = calculate_tool_frequencies(reports)
+
+    assert [entry.label for entry in stats] == ["slack", "zapier", "email", "make"]
+    assert [entry.count for entry in stats] == [2, 2, 1, 1]
