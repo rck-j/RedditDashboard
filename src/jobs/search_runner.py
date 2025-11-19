@@ -134,6 +134,7 @@ def _persisted_report_from(report: PostReport, job_id: int | None) -> PersistedP
         url=report.url,
         permalink=report.permalink,
         created=report.created,
+        created_utc=report.created_utc,
         score=report.score,
         num_comments=report.num_comments,
         automation_complexity=report.automation_insight.automation_complexity,

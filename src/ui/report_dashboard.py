@@ -26,6 +26,8 @@ from src.api.schemas import (
     SearchJobStats,
     SearchJobSummaryStats,
     SearchRequest,
+    TimelineBucketStat,
+    TimelineStats,
     TopKeywordStat,
     ToolStat,
     TopSubredditStat,
@@ -41,6 +43,7 @@ from src.services.analytics import (
     KeywordFrequency,
     ToolFrequency,
     TopSubredditCount,
+    build_timeline,
     calculate_complexity_distribution,
     calculate_tool_frequencies,
     extract_top_keywords,
@@ -72,6 +75,7 @@ except ImportError:  # pragma: no cover - fallback for standalone execution
         url: str
         permalink: str
         created: str
+        created_utc: datetime
         score: int
         num_comments: int
         initial_assessment: InitialAssessment
@@ -159,6 +163,9 @@ def _legacy_report_from(report: PersistedPostReport) -> PostReport:
         automation_complexity=complexity,
         required_tools=list(report.required_tools or []),
     )
+    created_utc = getattr(report, "created_utc", None)
+    if not isinstance(created_utc, datetime):
+        created_utc = report.created_at
     return PostReport(
         submission_id=report.submission_id,
         subreddit=report.subreddit,
@@ -166,6 +173,7 @@ def _legacy_report_from(report: PersistedPostReport) -> PostReport:
         url=report.url,
         permalink=report.permalink,
         created=report.created,
+        created_utc=created_utc,
         score=report.score,
         num_comments=report.num_comments,
         initial_assessment=initial_assessment,
@@ -245,6 +253,7 @@ def _job_response(
     )
     summary = None
     complexity = None
+    timeline = None
     if reports is not None:
         summary_metrics = summarize_reports(reports)
         summary = SearchJobSummaryStats(
@@ -257,7 +266,7 @@ def _job_response(
         complexity_snapshot = calculate_complexity_distribution(
             reports, include_timeline=True
         )
-        timeline = (
+        complexity_timeline = (
             [
                 ComplexityTimelineBucket(
                     bucket=entry.bucket,
@@ -272,7 +281,25 @@ def _job_response(
             total=complexity_snapshot.total,
             counts=complexity_snapshot.counts,
             percentages=complexity_snapshot.percentages,
-            timeline=timeline,
+            timeline=complexity_timeline,
+        )
+
+        timeline_buckets = build_timeline(reports, bucket_size="daily")
+        timeline = (
+            TimelineStats(
+                bucket_size="daily",
+                buckets=[
+                    TimelineBucketStat(
+                        bucket_start=entry.bucket_start,
+                        bucket_end=entry.bucket_end,
+                        total_posts=entry.total_posts,
+                        automation_posts=entry.automation_posts,
+                    )
+                    for entry in timeline_buckets
+                ],
+            )
+            if timeline_buckets
+            else None
         )
 
     stats = SearchJobStats(
@@ -282,6 +309,7 @@ def _job_response(
         report_count=report_count,
         summary=summary,
         complexity=complexity,
+        timeline=timeline,
         top_subreddits=
         (
             [

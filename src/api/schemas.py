@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 import re
-from typing import List
+from typing import List, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -145,12 +145,35 @@ class PersistedPostReportSchema(BaseModel):
     url: str
     permalink: str
     created: str
+    created_utc: datetime
     score: int
     num_comments: int
     automation_complexity: str
     required_tools: List[str] = Field(default_factory=list)
     insight_text: str
     created_at: datetime
+
+
+class TimelineBucketStat(BaseModel):
+    """Counts of total/automation posts for a single bucket."""
+
+    bucket_start: datetime = Field(
+        description="Start timestamp of the UTC bucket (inclusive)."
+    )
+    bucket_end: datetime = Field(
+        description="End timestamp of the UTC bucket (exclusive)."
+    )
+    total_posts: int = Field(description="Total persisted posts in the bucket.")
+    automation_posts: int = Field(
+        description="Posts flagged as automation opportunities in the bucket."
+    )
+
+
+class TimelineStats(BaseModel):
+    """Timeline buckets for rendering trend charts."""
+
+    bucket_size: Literal["daily", "weekly"]
+    buckets: List[TimelineBucketStat]
 
 
 class SearchJobSummaryStats(BaseModel):
@@ -219,6 +242,7 @@ class SearchJobStats(BaseModel):
     report_count: int
     summary: SearchJobSummaryStats | None = None
     complexity: ComplexityDistributionStats | None = None
+    timeline: TimelineStats | None = None
     top_subreddits: List[TopSubredditStat] | None = None
     top_keywords: List[TopKeywordStat] | None = None
     tools: List[ToolStat] | None = None
@@ -264,6 +288,8 @@ __all__ = [
     "SearchJobSummaryStats",
     "SearchJobStats",
     "TopKeywordStat",
+    "TimelineBucketStat",
+    "TimelineStats",
     "ToolStat",
     "TopSubredditStat",
     "SearchRequest",

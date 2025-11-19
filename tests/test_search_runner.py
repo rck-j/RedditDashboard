@@ -1,17 +1,19 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from src.jobs import search_runner
 from src.services.analyzer import AutomationInsight, InitialAssessment, PostReport
 
 
 def _report(required_tools: list[str]) -> PostReport:
+    created = datetime.now(timezone.utc)
     return PostReport(
         submission_id="abc",
         subreddit="test",
         title="Example",
         url="https://reddit.com",
         permalink="/r/test/abc",
-        created=datetime.utcnow().isoformat(),
+        created=created.isoformat(),
+        created_utc=created,
         score=1,
         num_comments=0,
         initial_assessment=InitialAssessment(is_automation=True, rationale="yes"),

@@ -77,7 +77,7 @@ def _print_report_entry(report: PostReport) -> None:
 
 def _save_report(path: Path, report: AnalysisReport) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    payload = report.model_dump()
+    payload = report.model_dump(mode="json")
     payload["total_posts"] = report.total_posts
     with path.open("w", encoding="utf-8") as handle:
         json.dump(payload, handle, indent=2)

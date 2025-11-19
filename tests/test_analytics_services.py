@@ -6,6 +6,7 @@ from sqlmodel import SQLModel, Session, create_engine
 
 from src.db.models import PersistedPostReport
 from src.services.analytics import (
+    build_timeline,
     calculate_complexity_distribution,
     calculate_tool_frequencies,
     extract_top_keywords,
@@ -15,6 +16,7 @@ from src.services.analytics import (
 
 def _report(**overrides) -> PersistedPostReport:
     created_at = overrides.pop("created_at", datetime(2024, 1, 1, tzinfo=timezone.utc))
+    created_utc = overrides.pop("created_utc", created_at)
     return PersistedPostReport(
         search_job_id=overrides.pop("search_job_id", 1),
         submission_id=overrides.pop("submission_id", "abc"),
@@ -23,6 +25,7 @@ def _report(**overrides) -> PersistedPostReport:
         url=overrides.pop("url", "https://reddit.com/example"),
         permalink=overrides.pop("permalink", "/r/test/example"),
         created=overrides.pop("created", "2024-01-01"),
+        created_utc=created_utc,
         score=overrides.pop("score", 1),
         num_comments=overrides.pop("num_comments", 0),
         automation_complexity=overrides.pop("automation_complexity", "medium"),
@@ -83,6 +86,37 @@ def test_calculate_complexity_distribution_timeline() -> None:
     assert snapshot.timeline[1].bucket == "2024-01-02"
     assert snapshot.timeline[1].automation_count == 1
     assert snapshot.timeline[1].non_automation_count == 1
+
+
+def test_build_timeline_supports_weekly_buckets() -> None:
+    base_time = datetime(2024, 1, 3, tzinfo=timezone.utc)  # Wednesday
+    reports = [
+        _report(
+            submission_id="1",
+            automation_complexity="high",
+            created_utc=base_time,
+        ),
+        _report(
+            submission_id="2",
+            automation_complexity="unknown",
+            created_utc=base_time + timedelta(days=1),
+        ),
+        _report(
+            submission_id="3",
+            automation_complexity="medium",
+            created_utc=base_time + timedelta(days=7),
+        ),
+    ]
+
+    buckets = build_timeline(reports, bucket_size="weekly")
+
+    assert len(buckets) == 2
+    assert buckets[0].bucket_start.isoformat() == "2024-01-01T00:00:00+00:00"
+    assert buckets[0].total_posts == 2
+    assert buckets[0].automation_posts == 1
+    assert buckets[1].bucket_start.isoformat() == "2024-01-08T00:00:00+00:00"
+    assert buckets[1].total_posts == 1
+    assert buckets[1].automation_posts == 1
 
 
 def test_fetch_top_subreddits_returns_sorted_counts(tmp_path) -> None:
