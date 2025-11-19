@@ -76,6 +76,9 @@ def _create_report(job_id: int, **overrides) -> PersistedPostReport:
         automation_complexity=overrides.pop("automation_complexity", "medium"),
         required_tools=overrides.pop("required_tools", ["tool"]),
         insight_text=overrides.pop("insight_text", "Insight"),
+        created_at=overrides.pop(
+            "created_at", datetime(2024, 1, 1, tzinfo=timezone.utc)
+        ),
     )
     with db_session.get_session() as session:
         session.add(report)
@@ -179,6 +182,12 @@ def test_read_search_returns_reports(api_client) -> None:
     assert summary["automation_percentage"] == pytest.approx(100.0)
     assert summary["average_score"] == pytest.approx(10.0)
     assert summary["average_comment_count"] == pytest.approx(2.0)
+    complexity = payload["stats"]["complexity"]
+    assert complexity["total"] == 1
+    assert complexity["counts"]["medium"] == 1
+    assert complexity["percentages"]["medium"] == pytest.approx(100.0)
+    assert complexity["timeline"][0]["automation_count"] == 1
+    assert complexity["timeline"][0]["non_automation_count"] == 0
     assert len(payload["reports"]) == 1
 
 
