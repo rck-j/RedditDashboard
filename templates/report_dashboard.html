@@ -327,6 +327,158 @@
         width: 0;
       }
 
+      .analytics-grid {
+        margin-top: 1.5rem;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 1.25rem;
+      }
+
+      .analytics-panel {
+        background-color: white;
+        border-radius: 1rem;
+        padding: 1.25rem;
+        box-shadow: 0 10px 25px rgba(15, 23, 42, 0.06);
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+      }
+
+      .analytics-panel h3 {
+        margin: 0;
+        font-size: 1.15rem;
+        color: #0f172a;
+      }
+
+      .chart-grid {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+
+      .chart-row {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+      }
+
+      .chart-row span {
+        font-size: 0.9rem;
+        color: #475569;
+        min-width: 70px;
+        text-transform: capitalize;
+      }
+
+      .chart-bar-track {
+        flex: 1;
+        height: 10px;
+        border-radius: 999px;
+        background-color: rgba(15, 23, 42, 0.08);
+        overflow: hidden;
+      }
+
+      .chart-bar-value {
+        height: 100%;
+        background-image: linear-gradient(90deg, #22d3ee, #6366f1);
+      }
+
+      .topics-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+      }
+
+      .topics-list li {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.95rem;
+        color: #0f172a;
+      }
+
+      .topics-list li span {
+        color: #475569;
+      }
+
+      .heatmap-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: 0.5rem;
+      }
+
+      .heatmap-cell {
+        padding: 0.75rem;
+        border-radius: 0.75rem;
+        background-color: #f1f5f9;
+        text-transform: capitalize;
+        font-size: 0.9rem;
+        color: #0f172a;
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+      }
+
+      .heatmap-cell strong {
+        font-size: 1.25rem;
+        color: #0f172a;
+      }
+
+      .timeline-chart {
+        display: flex;
+        align-items: flex-end;
+        gap: 0.5rem;
+        height: 160px;
+      }
+
+      .timeline-column {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.35rem;
+      }
+
+      .timeline-bar {
+        width: 100%;
+        background-color: rgba(15, 23, 42, 0.08);
+        border-radius: 0.5rem;
+        position: relative;
+        overflow: hidden;
+        min-height: 6px;
+      }
+
+      .timeline-bar span {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+      }
+
+      .timeline-bar span[data-layer="automation"] {
+        background-image: linear-gradient(180deg, #22c55e, #15803d);
+      }
+
+      .timeline-bar span[data-layer="non-automation"] {
+        background-image: linear-gradient(180deg, #fbbf24, #f97316);
+      }
+
+      .timeline-label {
+        font-size: 0.8rem;
+        color: #475569;
+      }
+
+      .timeline-count {
+        font-size: 0.85rem;
+        color: #1e293b;
+      }
+
+      .empty-state.small {
+        padding: 1rem;
+        font-size: 0.9rem;
+      }
+
       .filters {
         display: flex;
         flex-wrap: wrap;
@@ -565,6 +717,48 @@
         </div>
       </section>
 
+      <section class="analytics-grid" aria-label="Automation analytics">
+        <article class="analytics-panel" aria-live="polite">
+          <h3>Automation complexity</h3>
+          <div id="complexity-chart" class="chart-grid">
+            <p class="empty-state small">Complexity analytics will appear after a job completes.</p>
+          </div>
+        </article>
+        <article class="analytics-panel" aria-live="polite">
+          <h3>Top subreddits</h3>
+          <ol id="top-subreddits" class="topics-list">
+            <li><span class="empty-state small">Run a search to populate this list.</span></li>
+          </ol>
+        </article>
+        <article class="analytics-panel" aria-live="polite">
+          <h3>Trending topics</h3>
+          <ol id="top-keywords" class="topics-list">
+            <li><span class="empty-state small">Keywords will show up once analytics are available.</span></li>
+          </ol>
+        </article>
+        <article class="analytics-panel" aria-live="polite">
+          <h3>Tools heatmap</h3>
+          <div id="tools-heatmap" class="heatmap-grid">
+            <p class="empty-state small">Tool frequencies will populate when a job succeeds.</p>
+          </div>
+        </article>
+      </section>
+
+      <section class="analytics-grid" aria-label="Timeline visualizations">
+        <article class="analytics-panel" aria-live="polite">
+          <h3>Posting cadence</h3>
+          <div id="volume-timeline">
+            <p class="empty-state small">Timeline analytics will appear after the first job finishes.</p>
+          </div>
+        </article>
+        <article class="analytics-panel" aria-live="polite">
+          <h3>Automation momentum</h3>
+          <div id="complexity-timeline">
+            <p class="empty-state small">Complexity trends will populate when available.</p>
+          </div>
+        </article>
+      </section>
+
       <section class="filters" aria-label="Table filters">
         <div class="filter-group">
           <label for="subreddit-filter">Subreddit</label>
@@ -635,6 +829,8 @@
         subredditOptions: [...DEFAULT_SUBREDDITS],
       };
 
+      const COMPLEXITY_ORDER = ["high", "medium", "low", "unknown", "n/a"];
+
       const elements = {
         form: document.getElementById("search-form"),
         formFeedback: document.getElementById("search-form-feedback"),
@@ -650,6 +846,12 @@
         jobStatusSection: document.getElementById("job-status"),
         jobStatus: document.getElementById("job-status-panel"),
         summaryCards: document.getElementById("summary-cards"),
+        complexityChart: document.getElementById("complexity-chart"),
+        topSubreddits: document.getElementById("top-subreddits"),
+        topKeywords: document.getElementById("top-keywords"),
+        toolsHeatmap: document.getElementById("tools-heatmap"),
+        volumeTimeline: document.getElementById("volume-timeline"),
+        complexityTimeline: document.getElementById("complexity-timeline"),
         tableBody: document.querySelector("#report-table tbody"),
         subredditFilter: document.getElementById("subreddit-filter"),
         complexityFilter: document.getElementById("complexity-filter"),
@@ -694,6 +896,73 @@
           }
         }
         return Array.from(set).sort((a, b) => a.localeCompare(b));
+      }
+
+      function getStats() {
+        return state.job?.stats || null;
+      }
+
+      function formatNumber(value) {
+        if (typeof value !== "number" || Number.isNaN(value)) {
+          return "—";
+        }
+        return new Intl.NumberFormat().format(value);
+      }
+
+      function formatPercent(value) {
+        if (typeof value !== "number" || Number.isNaN(value)) {
+          return null;
+        }
+        return Math.round(value);
+      }
+
+      function formatShortDate(value) {
+        if (!value) {
+          return "—";
+        }
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime()) && typeof value === "string") {
+          const isoCandidate = `${value}T00:00:00Z`;
+          const coerced = new Date(isoCandidate);
+          if (!Number.isNaN(coerced.getTime())) {
+            return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(coerced);
+          }
+          return value;
+        }
+        return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(date);
+      }
+
+      function deriveAutomationCount(stats) {
+        if (!stats?.complexity?.counts) {
+          return null;
+        }
+        let total = 0;
+        for (const [key, value] of Object.entries(stats.complexity.counts)) {
+          if (!value) continue;
+          const normalized = key.trim().toLowerCase();
+          if (normalized && !["unknown", "n/a", "none"].includes(normalized)) {
+            total += value;
+          }
+        }
+        return total;
+      }
+
+      function setPanelEmptyState(element, message) {
+        if (!element) return;
+        element.innerHTML = `<p class="empty-state small">${escapeHtml(message)}</p>`;
+      }
+
+      function setListEmptyState(element, message) {
+        if (!element) return;
+        element.innerHTML = `<li><span class="empty-state small">${escapeHtml(message)}</span></li>`;
+      }
+
+      function labelize(value) {
+        const text = (value || "").replace(/_/g, " ").trim();
+        if (!text) {
+          return "Unknown";
+        }
+        return text.replace(/\b\w/g, (char) => char.toUpperCase());
       }
 
       function populateSelect(select, values) {
@@ -1331,49 +1600,80 @@
       }
 
       function renderSummaryCards() {
-        if (!state.job || state.job.status !== "succeeded" || state.reports.length === 0) {
-          elements.summaryCards.innerHTML = `<div class="empty-state">No metrics yet. Run a search to populate this section.</div>`;
+        const container = elements.summaryCards;
+        if (!container) {
           return;
         }
-        const job = state.job;
-        const totalReports = job.stats?.report_count ?? state.reports.length;
-        const processed = job.stats?.processed_count ?? totalReports;
-        const automationCount = state.reports.filter((report) => {
-          const value = (report.automation_complexity || "").toLowerCase();
-          return value && value !== "none";
-        }).length;
-        const automationPercent = totalReports ? Math.round((automationCount / totalReports) * 100) : 0;
-        const averageScore = job.stats?.average_score;
-        const averageComments = state.reports.length
-          ? state.reports.reduce((sum, report) => sum + (report.num_comments || 0), 0) / state.reports.length
-          : 0;
+        if (!state.job) {
+          container.innerHTML = `<div class="empty-state">Select or launch a job to view metrics.</div>`;
+          return;
+        }
+        if (state.job.status !== "succeeded") {
+          container.innerHTML = `<div class="empty-state">Metrics will populate once the job finishes.</div>`;
+          return;
+        }
+
+        const stats = getStats();
+        const summary = stats?.summary;
+        const totalReports = summary?.total_posts ?? stats?.report_count ?? state.reports.length;
+        if (!stats && !state.reports.length) {
+          container.innerHTML = `<div class="empty-state">Metrics will populate once analytics are available.</div>`;
+          return;
+        }
+        const processed = stats?.processed_count ?? state.job.processed_count ?? totalReports;
+        const automationCount =
+          deriveAutomationCount(stats) ??
+          state.reports.filter((report) => {
+            const value = (report.automation_complexity || "").toLowerCase();
+            return value && value !== "none";
+          }).length;
+        const automationPercentRaw =
+          summary?.automation_percentage ??
+          (totalReports ? (automationCount / totalReports) * 100 : 0);
+        const automationPercent = formatPercent(automationPercentRaw) ?? 0;
+        const averageScore =
+          typeof summary?.average_score === "number"
+            ? summary.average_score
+            : typeof stats?.average_score === "number"
+              ? stats.average_score
+              : state.reports.length
+                ? state.reports.reduce((sum, report) => sum + (report.score || 0), 0) / state.reports.length
+                : null;
+        const averageComments =
+          typeof summary?.average_comment_count === "number"
+            ? summary.average_comment_count
+            : state.reports.length
+              ? state.reports.reduce((sum, report) => sum + (report.num_comments || 0), 0) / state.reports.length
+              : null;
+
         const metrics = [
           {
             label: "Total Insights",
-            value: totalReports,
-            footnote: `${processed} processed posts`,
+            value: formatNumber(totalReports),
+            footnote: `${formatNumber(processed)} processed posts`,
           },
           {
             label: "Automation %",
             value: `${automationPercent}%`,
-            footnote: `${automationCount} automation-ready posts`,
+            footnote: `${formatNumber(automationCount)} automation-ready posts`,
             percent: automationPercent,
           },
           {
             label: "Avg Score",
-            value: typeof averageScore === "number" ? averageScore.toFixed(1) : "—",
+            value: averageScore !== null ? Number(averageScore).toFixed(1) : "—",
             footnote: "Mean Reddit score",
           },
           {
             label: "Avg Comments",
-            value: averageComments.toFixed(1),
+            value: averageComments !== null ? Number(averageComments).toFixed(1) : "—",
             footnote: "Per reported post",
           },
         ];
+
         const markup = metrics
           .map((metric) => {
             const bar = typeof metric.percent === "number"
-              ? `<div class="metric-bar"><span style="width: ${metric.percent}%"></span></div>`
+              ? `<div class="metric-bar"><span style="width: ${Math.min(Math.max(metric.percent, 0), 100)}%"></span></div>`
               : "";
             return `
               <article class="metric-card">
@@ -1385,7 +1685,236 @@
             `;
           })
           .join("");
-        elements.summaryCards.innerHTML = markup;
+        container.innerHTML = markup;
+      }
+
+      function renderComplexityChart() {
+        const container = elements.complexityChart;
+        if (!container) {
+          return;
+        }
+        if (!state.job || state.job.status !== "succeeded") {
+          setPanelEmptyState(container, "Complexity analytics will appear after a job completes.");
+          return;
+        }
+        const stats = getStats();
+        const complexity = stats?.complexity;
+        if (!complexity || complexity.total === 0) {
+          setPanelEmptyState(container, "No complexity insights captured yet.");
+          return;
+        }
+
+        const keys = [
+          ...COMPLEXITY_ORDER,
+          ...(complexity.percentages ? Object.keys(complexity.percentages) : []),
+          ...(complexity.counts ? Object.keys(complexity.counts) : []),
+        ];
+        const seen = new Set();
+        const rows = [];
+        for (const key of keys) {
+          const normalized = (key || "").toLowerCase();
+          if (!normalized || seen.has(normalized)) {
+            continue;
+          }
+          seen.add(normalized);
+          const count = complexity.counts?.[key] ?? complexity.counts?.[normalized] ?? 0;
+          const percentRaw =
+            complexity.percentages?.[key] ??
+            complexity.percentages?.[normalized] ??
+            (complexity.total ? (count / complexity.total) * 100 : 0);
+          if (!count && percentRaw <= 0) {
+            continue;
+          }
+          rows.push({
+            label: labelize(key),
+            count,
+            percent: Math.min(Math.max(percentRaw, 0), 100),
+          });
+        }
+
+        if (!rows.length) {
+          setPanelEmptyState(container, "No complexity insights captured yet.");
+          return;
+        }
+
+        container.innerHTML = rows
+          .map(
+            (row) => `
+              <div class="chart-row">
+                <span>${escapeHtml(row.label)}</span>
+                <div class="chart-bar-track">
+                  <div class="chart-bar-value" style="width: ${row.percent}%"></div>
+                </div>
+                <span>${formatNumber(row.count)}</span>
+              </div>
+            `
+          )
+          .join("");
+      }
+
+      function renderTopicLists() {
+        const subredditsEl = elements.topSubreddits;
+        const keywordsEl = elements.topKeywords;
+        if (!state.job || state.job.status !== "succeeded") {
+          setListEmptyState(subredditsEl, "Run a search to populate this list.");
+          setListEmptyState(keywordsEl, "Keywords will show up once analytics are ready.");
+          return;
+        }
+        const stats = getStats();
+        if (!stats) {
+          setListEmptyState(subredditsEl, "Analytics not ready yet.");
+          setListEmptyState(keywordsEl, "Analytics not ready yet.");
+          return;
+        }
+
+        const renderList = (items, element, emptyMessage, labelKey) => {
+          if (!element) return;
+          if (!Array.isArray(items) || items.length === 0) {
+            setListEmptyState(element, emptyMessage);
+            return;
+          }
+          element.innerHTML = items
+            .slice(0, 10)
+            .map(
+              (entry) => `
+                <li>
+                  <strong>${escapeHtml(entry[labelKey] || "unknown")}</strong>
+                  <span>${formatNumber(entry.count || 0)}</span>
+                </li>
+              `
+            )
+            .join("");
+        };
+
+        renderList(stats.subreddits, subredditsEl, "No subreddit data yet.", "subreddit");
+        renderList(stats.keywords, keywordsEl, "No keywords extracted yet.", "keyword");
+      }
+
+      function renderToolsHeatmap() {
+        const container = elements.toolsHeatmap;
+        if (!container) {
+          return;
+        }
+        if (!state.job || state.job.status !== "succeeded") {
+          setPanelEmptyState(container, "Tool frequencies will populate when a job succeeds.");
+          return;
+        }
+        const stats = getStats();
+        const tools = stats?.tools;
+        if (!Array.isArray(tools) || tools.length === 0) {
+          setPanelEmptyState(container, "No tool references detected yet.");
+          return;
+        }
+        const maxCount = Math.max(...tools.map((entry) => entry.count || 0)) || 1;
+        container.innerHTML = tools
+          .slice(0, 12)
+          .map((entry) => {
+            const ratio = Math.max((entry.count || 0) / maxCount, 0);
+            const intensity = 0.15 + ratio * 0.55;
+            const textColor = intensity > 0.45 ? "#f8fafc" : "#0f172a";
+            return `
+              <div class="heatmap-cell" style="background-color: rgba(37, 99, 235, ${intensity}); color: ${textColor}">
+                <span>${escapeHtml(entry.label || "unknown")}</span>
+                <strong>${formatNumber(entry.count || 0)}</strong>
+              </div>
+            `;
+          })
+          .join("");
+      }
+
+      function renderVolumeTimeline() {
+        const container = elements.volumeTimeline;
+        if (!container) {
+          return;
+        }
+        if (!state.job || state.job.status !== "succeeded") {
+          setPanelEmptyState(container, "Timeline analytics will appear after the first job finishes.");
+          return;
+        }
+        const stats = getStats();
+        const timeline = stats?.timeline?.buckets;
+        if (!Array.isArray(timeline) || timeline.length === 0) {
+          setPanelEmptyState(container, "No timeline data captured yet.");
+          return;
+        }
+        const maxTotal = Math.max(...timeline.map((bucket) => bucket.total_posts || 0)) || 1;
+        container.innerHTML = `
+          <div class="timeline-chart">
+            ${timeline
+              .map((bucket) => {
+                const total = bucket.total_posts || 0;
+                const automation = bucket.automation_posts || 0;
+                const barHeight = Math.max((total / maxTotal) * 100, 6);
+                const automationPercent = total ? Math.min((automation / total) * 100, 100) : 0;
+                const nonAutomationPercent = Math.max(100 - automationPercent, 0);
+                return `
+                  <div class="timeline-column" aria-label="${escapeHtml(
+                    `${formatShortDate(bucket.bucket_start)}: ${automation}/${total} automation`
+                  )}">
+                    <div class="timeline-bar" style="height: ${barHeight}%">
+                      <span data-layer="non-automation" style="height: ${nonAutomationPercent}%"></span>
+                      <span data-layer="automation" style="height: ${automationPercent}%"></span>
+                    </div>
+                    <span class="timeline-label">${escapeHtml(formatShortDate(bucket.bucket_start))}</span>
+                    <span class="timeline-count">${formatNumber(automation)}/${formatNumber(total)}</span>
+                  </div>
+                `;
+              })
+              .join("")}
+          </div>
+        `;
+      }
+
+      function renderComplexityTimeline() {
+        const container = elements.complexityTimeline;
+        if (!container) {
+          return;
+        }
+        if (!state.job || state.job.status !== "succeeded") {
+          setPanelEmptyState(container, "Complexity trends will populate when available.");
+          return;
+        }
+        const stats = getStats();
+        const timeline = stats?.complexity?.timeline;
+        if (!Array.isArray(timeline) || timeline.length === 0) {
+          setPanelEmptyState(container, "No complexity trend data yet.");
+          return;
+        }
+        const maxTotal = Math.max(
+          ...timeline.map((bucket) => (bucket.automation_count || 0) + (bucket.non_automation_count || 0))
+        ) || 1;
+        container.innerHTML = `
+          <div class="timeline-chart">
+            ${timeline
+              .map((bucket) => {
+                const total = (bucket.automation_count || 0) + (bucket.non_automation_count || 0);
+                const barHeight = Math.max((total / maxTotal) * 100, 6);
+                const automationPercent = total ? Math.min(((bucket.automation_count || 0) / total) * 100, 100) : 0;
+                const nonAutomationPercent = Math.max(100 - automationPercent, 0);
+                return `
+                  <div class="timeline-column" aria-label="${escapeHtml(
+                    `${bucket.bucket}: ${bucket.automation_count}/${total} automation`
+                  )}">
+                    <div class="timeline-bar" style="height: ${barHeight}%">
+                      <span data-layer="non-automation" style="height: ${nonAutomationPercent}%"></span>
+                      <span data-layer="automation" style="height: ${automationPercent}%"></span>
+                    </div>
+                    <span class="timeline-label">${escapeHtml(formatShortDate(bucket.bucket))}</span>
+                    <span class="timeline-count">${formatNumber(bucket.automation_count || 0)}/${formatNumber(total)}</span>
+                  </div>
+                `;
+              })
+              .join("")}
+          </div>
+        `;
+      }
+
+      function renderAnalyticsPanels() {
+        renderComplexityChart();
+        renderTopicLists();
+        renderToolsHeatmap();
+        renderVolumeTimeline();
+        renderComplexityTimeline();
       }
 
       async function hydrateJob(jobId) {
@@ -1397,6 +1926,7 @@
           renderSubredditOptions(job.subreddits || []);
           renderJobStatus();
           renderSummaryCards();
+          renderAnalyticsPanels();
           updateFilterOptions();
           renderTable();
           prefillForm(job);
@@ -1431,6 +1961,7 @@
             updateFilterOptions();
             renderTable();
             renderSummaryCards();
+            renderAnalyticsPanels();
             setJobStatusMessage("No completed search jobs yet. Launch one to begin.");
             setActiveJobId(null);
             renderJobHistoryOptions();
@@ -1511,6 +2042,7 @@
           state.reports = [];
           updateFilterOptions();
           renderSummaryCards();
+          renderAnalyticsPanels();
           renderTable();
           if (state.pollingHandle) {
             clearInterval(state.pollingHandle);
@@ -1567,6 +2099,7 @@
         document.body.addEventListener("htmx:afterSwap", () => refreshFilterControls({ rebind: true }));
         renderTable();
         renderSummaryCards();
+        renderAnalyticsPanels();
         fetchConfig();
         loadJobHistory();
         loadLatestJob();
