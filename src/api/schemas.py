@@ -9,6 +9,7 @@ from typing import List, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from src.db.models import JobStatus
+from src.jobs.job_errors import JobError
 from src.services.analytics import AUTOMATION_COMPLEXITY_LEVELS
 from src.config import SEARCH_PARAMETERS
 
@@ -264,6 +265,8 @@ class SearchJobResponse(BaseModel):
     started_at: datetime | None = None
     finished_at: datetime | None = None
     error_message: str | None = None
+    error: JobError | None = None
+    has_partial_results: bool = False
     stats: SearchJobStats
     reports: List[PersistedPostReportSchema] | None = None
 

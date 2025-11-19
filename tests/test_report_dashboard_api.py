@@ -155,6 +155,8 @@ def test_create_search_enqueues_job(api_client) -> None:
     body = response.json()
     assert body["subreddits"] == ["test"]
     assert body["query"] == "agents"
+    assert body["error"] is None
+    assert body["has_partial_results"] is False
     assert body["stats"]["processed_count"] == 0
     assert body["stats"]["subreddits"] is None
     assert body["stats"]["keywords"] is None
@@ -181,6 +183,8 @@ def test_read_search_returns_reports(api_client) -> None:
 
     assert response.status_code == 200
     payload = response.json()
+    assert payload["error"] is None
+    assert payload["has_partial_results"] is False
     assert payload["stats"]["report_count"] == 1
     summary = payload["stats"]["summary"]
     assert summary["total_posts"] == 1
@@ -226,6 +230,33 @@ def test_read_search_running_job_has_placeholder_stats(api_client) -> None:
     assert stats["tools"] is None
     assert stats["timeline"] is None
     assert payload["reports"] is None
+    assert payload["has_partial_results"] is False
+
+
+def test_read_search_failed_job_includes_error_payload(api_client) -> None:
+    client, _ = api_client
+    job = _create_job(
+        status=JobStatus.FAILED,
+        processed_count=3,
+        total_count=5,
+        error_message="Rate limit hit",
+        error_detail={
+            "code": "rate_limited",
+            "message": "Rate limit hit",
+            "retryable": True,
+            "context": {"details": "rate limit"},
+        },
+    )
+
+    response = client.get(f"/api/searches/{job.id}")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == JobStatus.FAILED.value
+    assert payload["has_partial_results"] is True
+    assert payload["error"]["code"] == "rate_limited"
+    assert payload["error_message"] == "Rate limit hit"
+    assert payload["stats"]["processed_count"] == 3
 
 
 def test_read_search_missing_job(api_client) -> None:
