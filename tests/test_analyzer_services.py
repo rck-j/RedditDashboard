@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 import sys
 import types
@@ -309,6 +310,7 @@ def test_save_report_writes_schema_with_total_posts(tmp_path: Path) -> None:
         url="https://reddit.com",
         permalink="/r/test/comments/abc123/title/",
         created="2024-01-01 00:00:00",
+        created_utc=datetime(2024, 1, 1, tzinfo=timezone.utc),
         score=1,
         num_comments=0,
         initial_assessment=initial,

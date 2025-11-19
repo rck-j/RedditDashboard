@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict
-from collections import Counter
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import re
-from typing import Iterable, Sequence
+from typing import Iterable, Literal, Sequence
 
 from sqlalchemy import func
 from sqlmodel import Session, select
@@ -72,6 +71,16 @@ class SummaryMetrics:
     average_comment_count: float | None
 
 
+@dataclass(frozen=True)
+class TimelineBucket:
+    """Counts of total and automation posts grouped by time bucket."""
+
+    bucket_start: datetime
+    bucket_end: datetime
+    total_posts: int
+    automation_posts: int
+
+
 def calculate_total_posts(reports: Sequence[PersistedPostReport]) -> int:
     """Return the total number of persisted reports."""
 
@@ -119,6 +128,43 @@ def summarize_reports(reports: Sequence[PersistedPostReport]) -> SummaryMetrics:
         average_score=calculate_average_score(reports),
         average_comment_count=calculate_average_comment_count(reports),
     )
+
+
+def build_timeline(
+    reports: Sequence[PersistedPostReport],
+    *,
+    bucket_size: Literal["daily", "weekly"] = "daily",
+) -> list[TimelineBucket]:
+    """Group reports into chronological buckets for charting."""
+
+    if bucket_size not in {"daily", "weekly"}:
+        raise ValueError("bucket_size must be 'daily' or 'weekly'.")
+
+    bucket_delta = timedelta(days=1 if bucket_size == "daily" else 7)
+    buckets: dict[datetime, dict[str, int]] = defaultdict(
+        lambda: {"total": 0, "automation": 0}
+    )
+
+    for report in reports:
+        timestamp = _extract_created_utc(report)
+        if timestamp is None:
+            continue
+        bucket_start = _coerce_bucket_start(timestamp, bucket_size)
+        entry = buckets[bucket_start]
+        entry["total"] += 1
+        if _is_automation_candidate(report):
+            entry["automation"] += 1
+
+    ordered = sorted(buckets.items(), key=lambda item: item[0])
+    return [
+        TimelineBucket(
+            bucket_start=start,
+            bucket_end=start + bucket_delta,
+            total_posts=counts["total"],
+            automation_posts=counts["automation"],
+        )
+        for start, counts in ordered
+    ]
 
 
 def calculate_complexity_distribution(
@@ -282,13 +328,36 @@ def _tokenize(text: str | None) -> Iterable[str]:
     return tokens
 
 
+def _extract_created_utc(
+    report: PersistedPostReport,
+) -> datetime | None:
+    timestamp = getattr(report, "created_utc", None)
+    if not isinstance(timestamp, datetime):
+        timestamp = getattr(report, "created_at", None)
+    if timestamp is None:
+        return None
+    if timestamp.tzinfo is None:
+        return timestamp.replace(tzinfo=timezone.utc)
+    return timestamp.astimezone(timezone.utc)
+
+
+def _coerce_bucket_start(timestamp: datetime, bucket_size: str) -> datetime:
+    normalized = timestamp.astimezone(timezone.utc)
+    if bucket_size == "weekly":
+        normalized -= timedelta(days=normalized.weekday())
+    return normalized.replace(hour=0, minute=0, second=0, microsecond=0)
+
+
 __all__ = [
     "AUTOMATION_COMPLEXITY_LEVELS",
     "ComplexityDistribution",
     "ComplexityTimelineBucket",
     "KeywordFrequency",
     "SummaryMetrics",
+    "TimelineBucket",
     "TopSubredditCount",
+    "ToolFrequency",
+    "build_timeline",
     "calculate_average_comment_count",
     "calculate_average_score",
     "calculate_complexity_distribution",

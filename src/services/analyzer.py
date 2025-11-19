@@ -45,6 +45,7 @@ class PostReport(BaseModel):
     url: str
     permalink: str
     created: str
+    created_utc: datetime
     score: int
     num_comments: int
     initial_assessment: InitialAssessment
@@ -311,9 +312,10 @@ class AutomationAnalyzer:
                 required_tools=[],
             )
 
-        created = datetime.fromtimestamp(
+        created_dt = datetime.fromtimestamp(
             post_summary["created_utc"], tz=timezone.utc
-        ).strftime("%Y-%m-%d %H:%M:%S")
+        )
+        created = created_dt.strftime("%Y-%m-%d %H:%M:%S")
 
         return PostReport(
             submission_id=post_summary["id"],
@@ -322,6 +324,7 @@ class AutomationAnalyzer:
             url=post_summary["url"],
             permalink=post_summary["permalink"],
             created=created,
+            created_utc=created_dt,
             score=post_summary["score"],
             num_comments=post_summary["num_comments"],
             initial_assessment=initial,

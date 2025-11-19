@@ -75,6 +75,10 @@ class PersistedPostReport(SQLModel, table=True):
     url: str
     permalink: str
     created: str
+    created_utc: datetime = Field(
+        default_factory=_utcnow,
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
     score: int
     num_comments: int
     automation_complexity: str

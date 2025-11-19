@@ -71,6 +71,9 @@ def _create_report(job_id: int, **overrides) -> PersistedPostReport:
         url=overrides.pop("url", "https://reddit.com/example"),
         permalink=overrides.pop("permalink", "/r/test/example"),
         created=overrides.pop("created", "2023-09-01"),
+        created_utc=overrides.pop(
+            "created_utc", datetime(2024, 1, 1, tzinfo=timezone.utc)
+        ),
         score=overrides.pop("score", 10),
         num_comments=overrides.pop("num_comments", 2),
         automation_complexity=overrides.pop("automation_complexity", "medium"),
@@ -197,6 +200,10 @@ def test_read_search_returns_reports(api_client) -> None:
     assert top_keywords[0]["count"] == 1
     tools = payload["stats"]["tools"]
     assert tools == [{"label": "tool", "count": 1}]
+    timeline = payload["stats"]["timeline"]
+    assert timeline["bucket_size"] == "daily"
+    assert timeline["buckets"][0]["total_posts"] == 1
+    assert timeline["buckets"][0]["automation_posts"] == 1
     assert len(payload["reports"]) == 1
 
 
