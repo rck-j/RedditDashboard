@@ -152,6 +152,15 @@ class PersistedPostReportSchema(BaseModel):
     created_at: datetime
 
 
+class SearchJobSummaryStats(BaseModel):
+    """Summary metrics derived from persisted post reports."""
+
+    total_posts: int
+    automation_percentage: float | None = None
+    average_score: float | None = None
+    average_comment_count: float | None = None
+
+
 class SearchJobStats(BaseModel):
     """Aggregated counters for a given search job."""
 
@@ -159,6 +168,7 @@ class SearchJobStats(BaseModel):
     total_count: int
     average_score: float | None = None
     report_count: int
+    summary: SearchJobSummaryStats | None = None
 
 
 class SearchJobResponse(BaseModel):
@@ -196,6 +206,7 @@ __all__ = [
     "PersistedPostReportSchema",
     "SearchJobListResponse",
     "SearchJobResponse",
+    "SearchJobSummaryStats",
     "SearchJobStats",
     "SearchRequest",
     "TimeFilterMetadata",

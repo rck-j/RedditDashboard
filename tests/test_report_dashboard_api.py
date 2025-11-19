@@ -174,6 +174,11 @@ def test_read_search_returns_reports(api_client) -> None:
     assert response.status_code == 200
     payload = response.json()
     assert payload["stats"]["report_count"] == 1
+    summary = payload["stats"]["summary"]
+    assert summary["total_posts"] == 1
+    assert summary["automation_percentage"] == pytest.approx(100.0)
+    assert summary["average_score"] == pytest.approx(10.0)
+    assert summary["average_comment_count"] == pytest.approx(2.0)
     assert len(payload["reports"]) == 1
 
 
