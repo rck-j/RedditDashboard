@@ -10,10 +10,10 @@ from pathlib import Path
 from typing import List, Tuple
 
 import praw
-from dotenv import load_dotenv
 from openai import OpenAI
 
 from src import config as app_config
+from src.env import REQUIRED_SECRETS, ensure_required_secrets, _require_env
 from src.services import (
     AnalysisReport,
     AnalyzerDependencies,
@@ -23,28 +23,29 @@ from src.services import (
 )
 
 
-load_dotenv()
-
-
 DEFAULT_OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
-
-def _require_env(key: str) -> str:
-    value = os.getenv(key)
-    if not value:
-        raise RuntimeError(f"Missing {key}; define it in .env or your shell.")
-    return value
+CLI_REQUIRED_SECRETS = tuple(REQUIRED_SECRETS)
 
 
 PROMPTS = app_config.get_prompts()
 
 
 def build_reddit_client() -> praw.Reddit:
-    return praw.Reddit(
+    reddit_kwargs = dict(
         client_id=_require_env("PRAW_CLIENT_ID"),
         client_secret=_require_env("PRAW_CLIENT_SECRET"),
         user_agent=_require_env("PRAW_USER_AGENT"),
     )
+    username = os.getenv("PRAW_USERNAME")
+    password = os.getenv("PRAW_PASSWORD")
+    if username and password:
+        reddit_kwargs.update(username=username, password=password)
+    elif username or password:
+        raise RuntimeError(
+            "Provide both PRAW_USERNAME and PRAW_PASSWORD or omit them entirely."
+        )
+    return praw.Reddit(**reddit_kwargs)
 
 
 def build_openai_client() -> Tuple[OpenAI, str]:
@@ -144,6 +145,7 @@ def _validate_cli_args(parser: argparse.ArgumentParser, args: argparse.Namespace
 
 
 def main() -> None:
+    ensure_required_secrets(CLI_REQUIRED_SECRETS)
     args = parse_args()
     reddit_client = build_reddit_client()
     openai_client, model_name = build_openai_client()
