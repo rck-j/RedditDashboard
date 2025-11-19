@@ -8,8 +8,28 @@ A web application for reviewing query results from the PRAW. Enter the subreddit
    ```bash
    pip install -r requirements.txt
    ```
-2. Copy `.env.example` (if available) or create a `.env` file with your Reddit and OpenAI credentials (`PRAW_CLIENT_ID`, `PRAW_CLIENT_SECRET`, `PRAW_USER_AGENT`, `OPENAI_API_KEY`, etc.).
+2. Copy `.env.example` into `.env` and fill in the secrets described below. Both the CLI (`red.py`) and the FastAPI server call `_require_env` at startup, so missing values halt the process with a descriptive error.
 3. Optional: override the default prompts by editing `config/prompts.json`.
+
+### Required environment variables
+
+| Name | Purpose |
+| --- | --- |
+| `OPENAI_API_KEY` | Used by `red.py` and the RQ worker to call the OpenAI Responses API. |
+| `PRAW_CLIENT_ID` / `PRAW_CLIENT_SECRET` | OAuth credentials for accessing Reddit's API through PRAW. |
+| `PRAW_USER_AGENT` | Custom user-agent string so Reddit can identify your application. |
+
+### Optional but recommended variables
+
+| Name | Purpose |
+| --- | --- |
+| `OPENAI_MODEL` | Defaults to `gpt-4o-mini`, but can be overridden if your account has access to a different model. |
+| `PRAW_USERNAME` / `PRAW_PASSWORD` | Only needed for flows that require authenticated Reddit actions. Included for completeness in `.env.example`. |
+| `REDIS_URL` | Points the API and workers at your Redis instance (defaults to `redis://localhost:6379/0`). |
+| `SEARCH_CACHE_TTL_SECONDS` | How long (in seconds) to reuse cached search jobs. |
+| `SEARCH_JOB_TTL_DAYS` | TTL (in days) for persisted search jobs in SQLite. |
+
+If `_require_env` raises `Missing <NAME>; define it in .env or your shell.`, double-check spelling, confirm the variable is exported in your shell, or ensure the `.env` file sits next to the repository root.
 
 ## Running the FastAPI dashboard
 

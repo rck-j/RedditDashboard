@@ -10,10 +10,10 @@ from pathlib import Path
 from typing import List, Tuple
 
 import praw
-from dotenv import load_dotenv
 from openai import OpenAI
 
 from src import config as app_config
+from src.env import REQUIRED_SECRETS, ensure_required_secrets, _require_env
 from src.services import (
     AnalysisReport,
     AnalyzerDependencies,
@@ -23,17 +23,9 @@ from src.services import (
 )
 
 
-load_dotenv()
-
-
 DEFAULT_OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
-
-def _require_env(key: str) -> str:
-    value = os.getenv(key)
-    if not value:
-        raise RuntimeError(f"Missing {key}; define it in .env or your shell.")
-    return value
+CLI_REQUIRED_SECRETS = tuple(REQUIRED_SECRETS)
 
 
 PROMPTS = app_config.get_prompts()
@@ -144,6 +136,7 @@ def _validate_cli_args(parser: argparse.ArgumentParser, args: argparse.Namespace
 
 
 def main() -> None:
+    ensure_required_secrets(CLI_REQUIRED_SECRETS)
     args = parse_args()
     reddit_client = build_reddit_client()
     openai_client, model_name = build_openai_client()
