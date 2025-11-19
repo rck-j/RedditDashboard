@@ -26,6 +26,7 @@ from src.api.schemas import (
 )
 from src.db.models import JobStatus, PersistedPostReport, SearchJob
 from src.db.session import engine, get_session
+from src.env import REQUIRED_SECRETS, ensure_required_secrets
 from src.infra.redis import get_redis_client
 from src.infra.search_cache import fetch_cached_job, remember_search_job
 from src.infra.search_jobs import create_search_job
@@ -74,6 +75,9 @@ ROOT_DIR = Path(__file__).resolve().parents[2]
 TEMPLATES = Jinja2Templates(directory=str(ROOT_DIR / "templates"))
 
 RATE_LIMIT_REQUESTS_PER_MINUTE = 30
+
+API_REQUIRED_SECRETS = tuple(REQUIRED_SECRETS)
+ensure_required_secrets(API_REQUIRED_SECRETS)
 
 app = FastAPI(title="Reddit Automation Report Dashboard")
 redis_client = get_redis_client()
