@@ -24,7 +24,7 @@ A web application for reviewing query results from the PRAW. Enter the subreddit
 | Name | Purpose |
 | --- | --- |
 | `OPENAI_MODEL` | Defaults to `gpt-4o-mini`, but can be overridden if your account has access to a different model. |
-| `PRAW_USERNAME` / `PRAW_PASSWORD` | Optional script credentials. When both are supplied, `red.py` authenticates as the user so flows that require voting or inbox scopes can run. Leave them blank for read-only searches. |
+| `PRAW_USERNAME` / `PRAW_PASSWORD` | Only needed for flows that require authenticated Reddit actions. Included for completeness in `.env.example`. |
 | `REDIS_URL` | Points the API and workers at your Redis instance (defaults to `redis://localhost:6379/0`). |
 | `SEARCH_CACHE_TTL_SECONDS` | How long (in seconds) to reuse cached search jobs. |
 | `SEARCH_JOB_TTL_DAYS` | TTL (in days) for persisted search jobs in SQLite. |
