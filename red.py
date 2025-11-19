@@ -32,11 +32,20 @@ PROMPTS = app_config.get_prompts()
 
 
 def build_reddit_client() -> praw.Reddit:
-    return praw.Reddit(
+    reddit_kwargs = dict(
         client_id=_require_env("PRAW_CLIENT_ID"),
         client_secret=_require_env("PRAW_CLIENT_SECRET"),
         user_agent=_require_env("PRAW_USER_AGENT"),
     )
+    username = os.getenv("PRAW_USERNAME")
+    password = os.getenv("PRAW_PASSWORD")
+    if username and password:
+        reddit_kwargs.update(username=username, password=password)
+    elif username or password:
+        raise RuntimeError(
+            "Provide both PRAW_USERNAME and PRAW_PASSWORD or omit them entirely."
+        )
+    return praw.Reddit(**reddit_kwargs)
 
 
 def build_openai_client() -> Tuple[OpenAI, str]:
