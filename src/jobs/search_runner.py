@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import re
 from typing import List, Sequence
 
 from dotenv import load_dotenv
@@ -96,6 +97,32 @@ def _commit_job(session, job: SearchJob) -> None:
     session.commit()
 
 
+TOOL_SPLIT_PATTERN = re.compile(r"(?:/|,|\+|&|\band\b)", re.IGNORECASE)
+
+
+def _normalize_required_tools(values: Sequence[str] | None) -> list[str]:
+    """Normalize automation tool names for consistent analytics."""
+
+    if not values:
+        return []
+
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for entry in values:
+        if entry is None:
+            continue
+        chunks = TOOL_SPLIT_PATTERN.split(entry)
+        if not chunks:
+            chunks = [entry]
+        for chunk in chunks:
+            tool = chunk.strip().lower()
+            if not tool or tool in seen:
+                continue
+            seen.add(tool)
+            normalized.append(tool)
+    return normalized
+
+
 def _persisted_report_from(report: PostReport, job_id: int | None) -> PersistedPostReport:
     if job_id is None:  # pragma: no cover - defensive
         raise RuntimeError("Search job must be stored before persisting reports")
@@ -110,7 +137,9 @@ def _persisted_report_from(report: PostReport, job_id: int | None) -> PersistedP
         score=report.score,
         num_comments=report.num_comments,
         automation_complexity=report.automation_insight.automation_complexity,
-        required_tools=report.automation_insight.required_tools,
+        required_tools=_normalize_required_tools(
+            report.automation_insight.required_tools
+        ),
         insight_text=report.automation_insight.deep_analysis,
     )
 

@@ -205,6 +205,11 @@ class TopKeywordStat(BaseModel):
     count: int
 
 
+class ToolStat(BaseModel):
+    label: str
+    count: int
+
+
 class SearchJobStats(BaseModel):
     """Aggregated counters for a given search job."""
 
@@ -216,6 +221,7 @@ class SearchJobStats(BaseModel):
     complexity: ComplexityDistributionStats | None = None
     top_subreddits: List[TopSubredditStat] | None = None
     top_keywords: List[TopKeywordStat] | None = None
+    tools: List[ToolStat] | None = None
 
 
 class SearchJobResponse(BaseModel):
@@ -258,6 +264,7 @@ __all__ = [
     "SearchJobSummaryStats",
     "SearchJobStats",
     "TopKeywordStat",
+    "ToolStat",
     "TopSubredditStat",
     "SearchRequest",
     "TimeFilterMetadata",
