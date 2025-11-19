@@ -6,10 +6,12 @@ import json
 from datetime import datetime, timezone
 
 import pytest
+from fastapi import status
 from fastapi.testclient import TestClient
 from sqlmodel import SQLModel, Session, create_engine, select
 
 from src import config as app_config
+from src.api.schemas import SearchJobResponse, SearchJobStats
 from src.db.models import JobStatus, PersistedPostReport, SearchJob
 from src.db import session as db_session
 from src.ui import report_dashboard
@@ -30,8 +32,16 @@ def api_client(monkeypatch: pytest.MonkeyPatch, tmp_path) -> Tuple[TestClient, L
     monkeypatch.setattr(db_session, "get_session", _get_session, raising=False)
     monkeypatch.setattr(report_dashboard, "engine", engine, raising=False)
     monkeypatch.setattr(report_dashboard, "get_session", _get_session, raising=False)
-    monkeypatch.setattr(report_dashboard, "fetch_cached_job", lambda *args, **kwargs: None)
-    monkeypatch.setattr(report_dashboard, "remember_search_job", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        report_dashboard,
+        "fetch_cached_job_response",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        report_dashboard,
+        "remember_search_job_response",
+        lambda *args, **kwargs: None,
+    )
 
     enqueue_calls: List[Dict] = []
 
@@ -163,6 +173,60 @@ def test_create_search_enqueues_job(api_client) -> None:
     assert enqueue_calls and enqueue_calls[0]["args"][0] == report_dashboard.search_runner.run
 
 
+def test_create_search_returns_cached_job(api_client, monkeypatch) -> None:
+    client, enqueue_calls = api_client
+    stats = SearchJobStats(
+        processed_count=1,
+        total_count=1,
+        average_score=10.0,
+        report_count=1,
+        summary=None,
+        complexity=None,
+        timeline=None,
+        subreddits=None,
+        keywords=None,
+        tools=None,
+    )
+    cached_response = SearchJobResponse(
+        id=99,
+        subreddits=["test"],
+        query="cached",
+        time_filter="month",
+        limit=10,
+        comments_limit=1,
+        status=JobStatus.SUCCEEDED,
+        created_at=datetime(2024, 1, 1, tzinfo=timezone.utc),
+        started_at=datetime(2024, 1, 1, tzinfo=timezone.utc),
+        finished_at=datetime(2024, 1, 1, tzinfo=timezone.utc),
+        error_message=None,
+        error=None,
+        has_partial_results=False,
+        stats=stats,
+        reports=None,
+    )
+
+    monkeypatch.setattr(
+        report_dashboard,
+        "fetch_cached_job_response",
+        lambda *args, **kwargs: cached_response,
+    )
+
+    response = client.post(
+        "/api/searches",
+        json={
+            "subreddits": ["test"],
+            "query": "cached",
+            "time_filter": "month",
+            "limit": 10,
+            "comments_limit": 1,
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["id"] == 99
+    assert enqueue_calls == []
+
+
 def test_create_search_validation_error(api_client) -> None:
     client, _ = api_client
 
@@ -172,6 +236,33 @@ def test_create_search_validation_error(api_client) -> None:
     )
 
     assert response.status_code == 422
+
+
+def test_create_search_enforces_concurrent_limit(api_client, monkeypatch) -> None:
+    client, enqueue_calls = api_client
+    monkeypatch.setenv("MAX_CONCURRENT_JOBS", "1")
+    monkeypatch.setattr(
+        report_dashboard,
+        "fetch_cached_job_response",
+        lambda *args, **kwargs: None,
+    )
+    _create_job(status=JobStatus.RUNNING)
+
+    response = client.post(
+        "/api/searches",
+        json={
+            "subreddits": ["test"],
+            "query": "automation",
+            "time_filter": "month",
+            "limit": 5,
+            "comments_limit": 1,
+        },
+    )
+
+    assert response.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+    detail = response.json()["detail"]
+    assert detail["code"] == "job_quota_exceeded"
+    assert enqueue_calls == []
 
 
 def test_read_search_returns_reports(api_client) -> None:

@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Iterable, List
+from typing import Iterable, List, Sequence
 
+from sqlalchemy import func
 from sqlmodel import select
 
-from src.db.models import SearchJob
+from src.db.models import JobStatus, SearchJob
 from src.db.session import get_session
 
 
@@ -56,4 +57,24 @@ def list_search_jobs() -> List[SearchJob]:
         )
 
 
-__all__ = ["SearchJob", "create_search_job", "get_search_job", "list_search_jobs"]
+def count_active_jobs(
+    statuses: Sequence[JobStatus] | None = None,
+) -> int:
+    """Return the number of jobs currently queued or running."""
+
+    active_statuses = tuple(statuses or (JobStatus.QUEUED, JobStatus.RUNNING))
+    with get_session() as session:
+        stmt = select(func.count()).where(SearchJob.is_deleted.is_(False))
+        if active_statuses:
+            stmt = stmt.where(SearchJob.status.in_(active_statuses))
+        total = session.exec(stmt).one()
+        return int(total or 0)
+
+
+__all__ = [
+    "SearchJob",
+    "count_active_jobs",
+    "create_search_job",
+    "get_search_job",
+    "list_search_jobs",
+]

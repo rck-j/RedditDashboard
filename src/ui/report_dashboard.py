@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import logging
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Sequence
@@ -28,8 +30,11 @@ from src.db.models import JobStatus, PersistedPostReport, SearchJob
 from src.db.session import engine, get_session
 from src.env import REQUIRED_SECRETS, ensure_required_secrets
 from src.infra.redis import get_redis_client
-from src.infra.search_cache import fetch_cached_job, remember_search_job
-from src.infra.search_jobs import create_search_job
+from src.infra.search_cache import (
+    fetch_cached_job_response,
+    remember_search_job_response,
+)
+from src.infra.search_jobs import count_active_jobs, create_search_job
 from src.jobs import search_runner
 from src.jobs.job_errors import JobError
 from src import config as app_config
@@ -76,9 +81,12 @@ ROOT_DIR = Path(__file__).resolve().parents[2]
 TEMPLATES = Jinja2Templates(directory=str(ROOT_DIR / "templates"))
 
 RATE_LIMIT_REQUESTS_PER_MINUTE = 30
+DEFAULT_MAX_CONCURRENT_JOBS = 3
 
 API_REQUIRED_SECRETS = tuple(REQUIRED_SECRETS)
 ensure_required_secrets(API_REQUIRED_SECRETS)
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Reddit Automation Report Dashboard")
 redis_client = get_redis_client()
@@ -120,6 +128,51 @@ def enforce_rate_limit(request: Request) -> None:
     except RedisError:  # pragma: no cover - network-dependent
         # Fall back to allowing the request when Redis is unavailable.
         return
+
+
+def _cache_job_response(job: SearchJob, response: SearchJobResponse) -> None:
+    """Persist a sanitized snapshot of the job in the Redis cache."""
+
+    try:
+        payload = response
+        if response.reports:
+            payload = response.model_copy(update={"reports": None})
+        remember_search_job_response(
+            redis_client,
+            job_response=payload,
+            subreddits=job.subreddits,
+            query=job.query,
+            time_filter=job.time_filter,
+            limit=job.limit,
+            comments_limit=job.comments_limit,
+        )
+    except RedisError as exc:  # pragma: no cover - depends on Redis availability
+        logger.warning("Unable to cache job %s: %s", job.id, exc)
+
+
+def _max_concurrent_jobs() -> int:
+    raw_value = os.getenv("MAX_CONCURRENT_JOBS")
+    try:
+        value = int(raw_value) if raw_value is not None else DEFAULT_MAX_CONCURRENT_JOBS
+    except ValueError:
+        value = DEFAULT_MAX_CONCURRENT_JOBS
+    return max(value, 0)
+
+
+def _enforce_concurrent_job_quota() -> None:
+    limit = _max_concurrent_jobs()
+    if limit <= 0:
+        return
+    active_jobs = count_active_jobs()
+    if active_jobs >= limit:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=_error_detail(
+                "job_quota_exceeded",
+                "Too many searches are currently running. "
+                "Please wait for existing jobs to finish before starting another run.",
+            ),
+        )
 
 
 def _summarize_text(value: str, *, limit: int = 240) -> str:
@@ -230,11 +283,12 @@ def _job_response(
     *,
     session: Session | None = None,
     reports: Sequence[PersistedPostReport] | None = None,
+    cache: bool = False,
 ) -> SearchJobResponse:
     stats_payload = _resolve_stats(job, session=session, reports=reports)
     stats = SearchJobStats.model_validate(stats_payload)
     error_payload = _deserialize_job_error(job)
-    return SearchJobResponse(
+    response = SearchJobResponse(
         id=job.id,
         subreddits=job.subreddits,
         query=job.query,
@@ -257,6 +311,9 @@ def _job_response(
         if reports is not None
         else None,
     )
+    if cache:
+        _cache_job_response(job, response)
+    return response
 
 
 def _deserialize_job_error(job: SearchJob) -> JobError | None:
@@ -358,7 +415,7 @@ def create_search(
     """Queue a Reddit search via RQ and return the job metadata."""
 
     payload = request
-    cached_job = fetch_cached_job(
+    cached_job = fetch_cached_job_response(
         redis_client,
         subreddits=payload.subreddits,
         query=payload.query,
@@ -367,7 +424,9 @@ def create_search(
         comments_limit=payload.comments_limit,
     )
     if cached_job is not None:
-        return _job_response(cached_job)
+        return cached_job
+
+    _enforce_concurrent_job_quota()
 
     job = create_search_job(
         query=payload.query,
@@ -393,16 +452,7 @@ def create_search(
             detail=f"Unable to enqueue search job: {exc}",
         ) from exc
 
-    remember_search_job(
-        redis_client,
-        job_id=job.id,
-        subreddits=payload.subreddits,
-        query=payload.query,
-        time_filter=payload.time_filter,
-        limit=payload.limit,
-        comments_limit=payload.comments_limit,
-    )
-    return _job_response(job)
+    return _job_response(job, cache=True)
 
 
 @app.get("/api/searches/{job_id}", response_model=SearchJobResponse)
@@ -412,7 +462,7 @@ def read_search(job_id: int) -> SearchJobResponse:
         reports: List[PersistedPostReport] | None = None
         if job.status == JobStatus.SUCCEEDED:
             reports = _fetch_reports(session, job.id)
-        return _job_response(job, session=session, reports=reports)
+        return _job_response(job, session=session, reports=reports, cache=True)
 
 
 @app.get("/api/searches", response_model=SearchJobListResponse)
@@ -461,7 +511,10 @@ def list_searches(
             total=int(total or 0),
             page=page,
             page_size=page_size,
-            items=[_job_response(job, session=session) for job in jobs],
+            items=[
+                _job_response(job, session=session, cache=True)
+                for job in jobs
+            ],
         )
 
 
