@@ -266,7 +266,12 @@ def _resolve_stats(
             active_session = get_session()
             owns_session = True
         try:
-            return build_search_job_stats(active_session, job, reports=reports)
+            stats = build_search_job_stats(active_session, job, reports=reports)
+            if session is not None:
+                job.stats = stats
+                active_session.add(job)
+                active_session.commit()
+            return stats
         finally:
             if owns_session and active_session is not None:
                 active_session.close()
