@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 from datetime import datetime, timezone
 from pathlib import Path
@@ -14,6 +15,7 @@ from openai import OpenAI
 
 from src import config as app_config
 from src.env import REQUIRED_SECRETS, ensure_required_secrets, _require_env
+from src.infra.observability import TelemetryRecorder
 from src.services import (
     AnalysisReport,
     AnalyzerDependencies,
@@ -149,40 +151,58 @@ def main() -> None:
     args = parse_args()
     reddit_client = build_reddit_client()
     openai_client, model_name = build_openai_client()
+    telemetry = TelemetryRecorder(logger=logger, job_id="cli")
     deps = AnalyzerDependencies(
         reddit=reddit_client,
         openai=openai_client,
         openai_model=model_name,
         prompts=PROMPTS,
+        telemetry=telemetry,
     )
     analyzer = AutomationAnalyzer(deps)
 
     generated_at = datetime.now(timezone.utc).isoformat()
     results: List[PostReport] = []
+    telemetry.job_started(queued_at=None)
     print("Streaming Reddit results and capturing in-memory report...")
-    for post_summary in search_posts(
-        reddit_client,
-        subreddits=args.subs,
-        query=args.query,
-        time_filter=args.time_filter,
-        limit=args.limit,
-    ):
-        report = analyzer.analyze_post(
-            post_summary, comment_limit=args.comments_limit
+    try:
+        for post_summary in search_posts(
+            reddit_client,
+            subreddits=args.subs,
+            query=args.query,
+            time_filter=args.time_filter,
+            limit=args.limit,
+            telemetry=telemetry,
+        ):
+            report = analyzer.analyze_post(
+                post_summary, comment_limit=args.comments_limit
+            )
+            results.append(report)
+            telemetry.record_post_processed(len(results))
+            if len(results) % 5 == 0:
+                telemetry.job_progress(
+                    processed=len(results), total_seen=len(results)
+                )
+            _print_report_entry(report)
+        telemetry.job_progress(processed=len(results), total_seen=len(results))
+        final_report = AnalysisReport(
+            generated_at=generated_at,
+            query=args.query,
+            time_filter=args.time_filter,
+            posts=results,
         )
-        results.append(report)
-        _print_report_entry(report)
-    final_report = AnalysisReport(
-        generated_at=generated_at,
-        query=args.query,
-        time_filter=args.time_filter,
-        posts=results,
-    )
-    print(f"Processed {final_report.total_posts} posts total.")
-    if args.report_path:
-        _save_report(args.report_path, final_report)
-        print(f"Final report available at {args.report_path}")
+        print(f"Processed {final_report.total_posts} posts total.")
+        if args.report_path:
+            _save_report(args.report_path, final_report)
+            print(f"Final report available at {args.report_path}")
+        telemetry.job_completed(status="succeeded")
+    except Exception as exc:
+        telemetry.job_failed(error_code="cli_failure", message=str(exc))
+        raise
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=os.getenv("REDDASH_LOG_LEVEL", "INFO").upper())
     main()
+logger = logging.getLogger(__name__)
+

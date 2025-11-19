@@ -12,6 +12,7 @@ from typing import Dict, List, Sequence
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from pydantic import BaseModel, Field, ValidationError
 from redis.exceptions import RedisError
 from rq import Queue
@@ -29,6 +30,7 @@ from src.api.schemas import (
 from src.db.models import JobStatus, PersistedPostReport, SearchJob
 from src.db.session import engine, get_session
 from src.env import REQUIRED_SECRETS, ensure_required_secrets
+from src.infra.observability import log_structured, set_queue_depth
 from src.infra.redis import get_redis_client
 from src.infra.search_cache import (
     fetch_cached_job_response,
@@ -446,7 +448,27 @@ def create_search(
             limit=payload.limit,
             comments_limit=payload.comments_limit,
         )
+        try:
+            current_depth = len(queue)
+        except Exception:  # pragma: no cover - depends on Redis availability
+            current_depth = None
+        else:
+            set_queue_depth(current_depth)
+        log_structured(
+            logger,
+            logging.INFO,
+            "job_enqueued",
+            job_id=job.id,
+            queue_depth=current_depth,
+        )
     except Exception as exc:  # pragma: no cover - depends on Redis availability
+        log_structured(
+            logger,
+            logging.ERROR,
+            "job_enqueue_failed",
+            job_id=job.id,
+            message=str(exc),
+        )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"Unable to enqueue search job: {exc}",
@@ -516,6 +538,14 @@ def list_searches(
                 for job in jobs
             ],
         )
+
+
+@app.get("/metrics")
+def metrics() -> Response:
+    """Expose Prometheus metrics for scraping."""
+
+    payload = generate_latest()
+    return Response(payload, media_type=CONTENT_TYPE_LATEST)
 
 
 @app.delete("/api/searches/{job_id}", status_code=status.HTTP_204_NO_CONTENT)

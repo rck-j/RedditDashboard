@@ -60,6 +60,18 @@ If `_require_env` raises `Missing <NAME>; define it in .env or your shell.`, dou
    ```
 4. Each POST creates a `SearchJob` database row, enqueues `src.jobs.search_runner.run` via RQ, and immediately returns the job metadata (including timestamps, counts, and status). RQ workers stream their progress back into SQLite, creating `PersistedPostReport` rows linked to each job.
 
+### Observability and metrics
+
+- Every job lifecycle event emits a structured JSON log (`job_submitted`, `job_enqueued`, `job_started`, `job_progress`, `job_completed`, and `job_failed`). These logs include queue/wall-clock timings plus per-job metadata so you can trace requests end-to-end across the API server, Redis queue, and worker.
+- External API calls also produce structured logs. Reddit searches and submission fetches note the subreddit/query plus the current Reddit quota headers, while OpenAI requests log a masked prompt label, latency, and the reported token usage.
+- Prometheus-compatible metrics are exported from the FastAPI app at `GET /metrics`. The following series are available out of the box:
+  - `reddash_job_duration_seconds` histogram (job runtime)
+  - `reddash_posts_per_minute` gauge (throughput of the latest job)
+  - `reddash_openai_tokens_per_job` histogram (tokens consumed per job)
+  - `reddash_queue_depth` gauge (current Redis queue depth)
+
+  To scrape locally, run the dashboard (`uvicorn src.ui.report_dashboard:app --reload`) and open `http://localhost:8000/metrics` or point Prometheus at the same endpoint.
+
 ### Legacy `/api/reports` compatibility
 
 - The `/api/reports` endpoint now queries the database for the most recently finished job with `status="succeeded"` and serializes its `PersistedPostReport` rows back into the original `PostReport` schema expected by the dashboard table. The response body remains a JSON list, but the handler also sets an `X-RedDash-Report-Stats` header (job id, completion timestamp, and report count) so the UI team can detect when a job changes.

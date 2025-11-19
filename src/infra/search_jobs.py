@@ -4,11 +4,16 @@ from __future__ import annotations
 
 from typing import Iterable, List, Sequence
 
+import logging
 from sqlalchemy import func
 from sqlmodel import select
 
 from src.db.models import JobStatus, SearchJob
 from src.db.session import get_session
+from src.infra.observability import log_structured
+
+
+logger = logging.getLogger(__name__)
 
 
 def create_search_job(
@@ -32,7 +37,19 @@ def create_search_job(
         session.add(job)
         session.commit()
         session.refresh(job)
-        return job
+    log_structured(
+        logger,
+        logging.INFO,
+        "job_submitted",
+        job_id=job.id,
+        query=query,
+        subreddits=list(subreddits),
+        time_filter=time_filter,
+        limit=limit,
+        comments_limit=comments_limit,
+        created_at=job.created_at,
+    )
+    return job
 
 
 def get_search_job(job_id: int) -> SearchJob:

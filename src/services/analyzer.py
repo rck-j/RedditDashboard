@@ -4,11 +4,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import time
 from typing import Any, Dict, Iterator, List, Sequence, Type, TypeVar
 
 import praw
 from openai import OpenAI
 from pydantic import BaseModel, Field, ValidationError
+
+from src.infra.observability import TelemetryRecorder
 
 
 T = TypeVar("T", bound=BaseModel)
@@ -71,17 +74,35 @@ class AnalyzerDependencies:
     openai: OpenAI
     openai_model: str
     prompts: Dict[str, str]
+    telemetry: TelemetryRecorder | None = None
 
 
 def _parse_as_model(
-    client: OpenAI, *, model: str, prompt: str, text_format: Type[T]
+    client: OpenAI,
+    *,
+    model: str,
+    prompt: str,
+    text_format: Type[T],
+    telemetry: TelemetryRecorder | None = None,
+    prompt_label: str | None = None,
 ) -> T:
+    if telemetry:
+        telemetry.log_openai_request(prompt_label=prompt_label)
+    start = time.perf_counter()
     response = client.responses.parse(
         model=model,
         input=[{"role": "user", "content": prompt}],
         max_output_tokens=400,
         text_format=text_format,
     )
+    duration_ms = (time.perf_counter() - start) * 1000
+    usage_payload = _extract_usage(response)
+    if telemetry:
+        telemetry.log_openai_response(
+            prompt_label=prompt_label,
+            duration_ms=duration_ms,
+            usage=usage_payload,
+        )
     if isinstance(response, text_format):
         return response
 
@@ -130,6 +151,30 @@ def _parse_as_model(
     )
 
 
+def _extract_usage(response: Any) -> Dict[str, Any] | None:
+    usage = getattr(response, "usage", None)
+    if usage is None:
+        return None
+    if isinstance(usage, dict):
+        return usage
+    if hasattr(usage, "model_dump"):
+        payload = usage.model_dump()
+        if isinstance(payload, dict):
+            return payload
+    snapshot: Dict[str, Any] = {}
+    for key in (
+        "prompt_tokens",
+        "completion_tokens",
+        "input_tokens",
+        "output_tokens",
+        "total_tokens",
+    ):
+        value = getattr(usage, key, None)
+        if value is not None:
+            snapshot[key] = value
+    return snapshot or None
+
+
 def _truncate(text: str, limit: int) -> str:
     if len(text) <= limit:
         return text
@@ -156,18 +201,55 @@ def search_posts(
     query: str,
     time_filter: str,
     limit: int,
+    telemetry: TelemetryRecorder | None = None,
 ) -> Iterator[Dict[str, Any]]:
     for subreddit_name in subreddits:
         subreddit = reddit_client.subreddit(subreddit_name)
+        metadata = {
+            "subreddit": subreddit_name,
+            "query": query,
+            "time_filter": time_filter,
+            "limit": limit,
+        }
+        if telemetry:
+            telemetry.log_reddit_call(
+                action="search",
+                phase="start",
+                metadata=metadata,
+            )
+        start = time.perf_counter()
+        total = 0
         for submission in subreddit.search(
             query, sort="new", time_filter=time_filter, limit=limit
         ):
+            total += 1
             yield summarize_post(submission)
+        duration_ms = (time.perf_counter() - start) * 1000
+        if telemetry:
+            telemetry.log_reddit_call(
+                action="search",
+                phase="finish",
+                metadata={**metadata, "post_count": total},
+                duration_ms=duration_ms,
+                quota=_reddit_quota_snapshot(reddit_client),
+            )
 
 
 def fetch_full_post(
-    reddit_client: praw.Reddit, url_or_id: str, *, max_comments: int
+    reddit_client: praw.Reddit,
+    url_or_id: str,
+    *,
+    max_comments: int,
+    telemetry: TelemetryRecorder | None = None,
 ) -> Dict[str, Any]:
+    metadata = {"submission": url_or_id, "max_comments": max_comments}
+    if telemetry:
+        telemetry.log_reddit_call(
+            action="fetch_submission",
+            phase="start",
+            metadata=metadata,
+        )
+    start = time.perf_counter()
     if url_or_id.startswith("http"):
         submission = reddit_client.submission(url=url_or_id)
     else:
@@ -204,7 +286,34 @@ def fetch_full_post(
         )
 
     post["comments"] = comments
+    if telemetry:
+        telemetry.log_reddit_call(
+            action="fetch_submission",
+            phase="finish",
+            metadata={**metadata, "comment_count": len(comments)},
+            duration_ms=(time.perf_counter() - start) * 1000,
+            quota=_reddit_quota_snapshot(reddit_client),
+        )
     return post
+
+
+def _reddit_quota_snapshot(reddit_client: praw.Reddit) -> Dict[str, Any] | None:
+    auth = getattr(reddit_client, "auth", None)
+    limits = getattr(auth, "limits", None)
+    if limits is None:
+        return None
+    snapshot: Dict[str, Any] = {}
+    keys = ("used", "remaining", "reset_timestamp")
+    if isinstance(limits, dict):
+        for key in keys:
+            if key in limits:
+                snapshot[key] = limits[key]
+    else:
+        for key in keys:
+            value = getattr(limits, key, None)
+            if value is not None:
+                snapshot[key] = value
+    return snapshot or None
 
 
 class AutomationAnalyzer:
@@ -213,6 +322,7 @@ class AutomationAnalyzer:
         self._openai = deps.openai
         self._model = deps.openai_model
         self._prompts = deps.prompts
+        self._telemetry = deps.telemetry
 
     def initial_assessment(self, post_summary: Dict[str, Any]) -> InitialAssessment:
         post_details = (
@@ -234,6 +344,8 @@ class AutomationAnalyzer:
                 model=self._model,
                 prompt=prompt,
                 text_format=InitialAssessment,
+                telemetry=self._telemetry,
+                prompt_label="initial_assessment",
             )
         except ValidationError as exc:
             return InitialAssessment(
@@ -269,6 +381,8 @@ class AutomationAnalyzer:
                 model=self._model,
                 prompt=prompt,
                 text_format=AutomationInsight,
+                telemetry=self._telemetry,
+                prompt_label="deep_assessment",
             )
         except ValidationError as exc:
             return AutomationInsight(
@@ -295,6 +409,7 @@ class AutomationAnalyzer:
                     self._reddit,
                     post_summary["id"],
                     max_comments=comment_limit,
+                    telemetry=self._telemetry,
                 )
                 deep = self.deep_assessment(full_post)
             except Exception as exc:
