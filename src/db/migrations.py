@@ -43,15 +43,13 @@ def _backfill_owner(engine: Engine) -> None:
             text(
                 "UPDATE search_jobs SET user_id = :user_id "
                 "WHERE user_id IS NULL"
-            ),
-            {"user_id": system_user.id},
+            ).bindparams(user_id=system_user.id)
         )
         session.exec(
             text(
                 "UPDATE post_reports SET user_id = :user_id "
                 "WHERE user_id IS NULL"
-            ),
-            {"user_id": system_user.id},
+            ).bindparams(user_id=system_user.id)
         )
 
 
