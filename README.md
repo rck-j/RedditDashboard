@@ -21,6 +21,8 @@ For a step-by-step Postgres checklist (installing the server, creating roles, ru
 | `OPENAI_API_KEY` | Used by `red.py` and the RQ worker to call the OpenAI Responses API. |
 | `PRAW_CLIENT_ID` / `PRAW_CLIENT_SECRET` | OAuth credentials for accessing Reddit's API through PRAW. |
 | `PRAW_USER_AGENT` | Custom user-agent string so Reddit can identify your application. |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | OAuth client for Google sign-in (used by the FastAPI dashboard). |
+| `AUTH_SECRET_KEY` | Random, high-entropy string used to sign JWT session cookies. |
 | `DATABASE_URL` | SQLAlchemy connection string for your Postgres instance (for example, `postgresql+psycopg://reddash:reddash@localhost:5432/reddash`). |
 
 ### Optional but recommended variables
@@ -32,6 +34,15 @@ For a step-by-step Postgres checklist (installing the server, creating roles, ru
 | `REDIS_URL` | Points the API and workers at your Redis instance (defaults to `redis://localhost:6379/0`). |
 | `SEARCH_CACHE_TTL_SECONDS` | How long (in seconds) to reuse cached search jobs. |
 | `SEARCH_JOB_TTL_DAYS` | TTL (in days) for persisted search jobs in the relational database. |
+| `AUTH_COOKIE_DOMAIN` / `AUTH_COOKIE_SECURE` | Override the auth cookie domain/`Secure` flag when running behind HTTPS or custom hostnames. |
+| `AUTH_TOKEN_TTL_SECONDS` | How long issued JWT cookies remain valid (defaults to 24 hours). |
+
+### Google OAuth local setup
+
+1. In the Google Cloud Console, enable the "Google People API", configure the OAuth consent screen, and create an **OAuth client ID** of type "Web application".
+2. Add `http://localhost:8000` as an authorized JavaScript origin and `http://localhost:8000/auth/callback/google` as an authorized redirect URI.
+3. Copy the generated client ID/secret into your `.env` as `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, and set `AUTH_SECRET_KEY` to a random string for signing JWT cookies.
+4. Start the FastAPI server and begin the login flow at `http://localhost:8000/auth/login/google`; successful callbacks issue a signed cookie and redirect back to the dashboard.
 
 If `_require_env` raises `Missing <NAME>; define it in .env or your shell.`, double-check spelling, confirm the variable is exported in your shell, or ensure the `.env` file sits next to the repository root.
 
@@ -42,6 +53,7 @@ If `_require_env` raises `Missing <NAME>; define it in .env or your shell.`, dou
    uvicorn src.ui.report_dashboard:app --reload
    ```
 2. Visit `http://localhost:8000` to load the HTMX-powered dashboard. The legacy table still calls `/api/reports`, which now streams the latest completed SQLModel `SearchJob` back in the same JSON structure that `data/report.json` used to provide.
+3. Begin authentication at `http://localhost:8000/auth/login/google`; `/api/searches*` endpoints now require the issued session cookie.
 
 ## Background search jobs with Redis + RQ
 
