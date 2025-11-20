@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 def create_search_job(
     *,
+    user_id: int,
     query: str,
     subreddits: Iterable[str],
     time_filter: str,
@@ -27,6 +28,7 @@ def create_search_job(
     """Persist a new SearchJob row and return it."""
 
     job = SearchJob(
+        user_id=user_id,
         query=query,
         subreddits=list(subreddits),
         time_filter=time_filter,
@@ -42,6 +44,7 @@ def create_search_job(
         logging.INFO,
         "job_submitted",
         job_id=job.id,
+        user_id=user_id,
         query=query,
         subreddits=list(subreddits),
         time_filter=time_filter,
