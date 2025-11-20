@@ -12,6 +12,8 @@ A web application for reviewing query results from the PRAW. Enter the subreddit
 3. Provision a Postgres database (local or hosted) and set `DATABASE_URL` accordingly before starting the API or RQ workers.
 4. Optional: override the default prompts by editing `config/prompts.json`.
 
+For a step-by-step Postgres checklist (installing the server, creating roles, running migrations, and wiring RQ workers), see [`docs/postgres_setup.md`](docs/postgres_setup.md).
+
 ### Required environment variables
 
 | Name | Purpose |
