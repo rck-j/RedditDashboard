@@ -40,6 +40,7 @@ def _normalize_payload(
     time_filter: str,
     limit: int,
     comments_limit: int,
+    user_id: int | None = None,
 ) -> str:
     normalized = {
         "subreddits": _canonicalize_subreddits(subreddits),
@@ -48,6 +49,8 @@ def _normalize_payload(
         "limit": int(limit),
         "comments_limit": int(comments_limit),
     }
+    if user_id is not None:
+        normalized["user_id"] = int(user_id)
     return json.dumps(normalized, sort_keys=True, separators=(",", ":"))
 
 
@@ -78,6 +81,7 @@ def fetch_cached_job_response(
     time_filter: str,
     limit: int,
     comments_limit: int,
+    user_id: int | None = None,
 ) -> SearchJobResponse | None:
     """Return a cached job response when available and still valid."""
 
@@ -87,6 +91,7 @@ def fetch_cached_job_response(
         time_filter=time_filter,
         limit=limit,
         comments_limit=comments_limit,
+        user_id=user_id,
     )
     cache_key = _cache_key(normalized)
     cached_payload = _decode_cached_value(redis_client.get(cache_key))
@@ -122,6 +127,7 @@ def remember_search_job_response(
     limit: int,
     comments_limit: int,
     include_reports: bool = False,
+    user_id: int | None = None,
 ) -> None:
     """Persist serialized job metadata to Redis for duplicate detection."""
 
@@ -135,6 +141,7 @@ def remember_search_job_response(
         time_filter=time_filter,
         limit=limit,
         comments_limit=comments_limit,
+        user_id=user_id,
     )
     cache_key = _cache_key(normalized)
     payload = job_response

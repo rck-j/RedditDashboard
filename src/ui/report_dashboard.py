@@ -1,23 +1,25 @@
 """Web dashboard for viewing Reddit automation reports."""
-
 from __future__ import annotations
 
 import json
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Sequence
 
+from authlib.integrations.starlette_client import OAuth, OAuthError
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from jose import JWTError, jwt
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from pydantic import BaseModel, Field, ValidationError
 from redis.exceptions import RedisError
 from rq import Queue
 from sqlalchemy import func
 from sqlmodel import SQLModel, Session, delete, select
+from starlette.middleware.sessions import SessionMiddleware
 
 from src.api.schemas import (
     AppConfigResponse,
@@ -34,10 +36,11 @@ from src.db.models import (
     PersistedPostReport,
     SearchJob,
     SubscriptionPlan,
+    User,
 )
 from src.db.repositories import user_repo
 from src.db.session import engine, get_session
-from src.env import REQUIRED_SECRETS, ensure_required_secrets
+from src.env import REQUIRED_SECRETS, _require_env, ensure_required_secrets
 from src.infra.observability import log_structured, set_queue_depth
 from src.infra.redis import get_redis_client
 from src.infra.search_cache import (
@@ -93,12 +96,45 @@ TEMPLATES = Jinja2Templates(directory=str(ROOT_DIR / "templates"))
 RATE_LIMIT_REQUESTS_PER_MINUTE = 30
 DEFAULT_MAX_CONCURRENT_JOBS = 3
 
-API_REQUIRED_SECRETS = tuple(REQUIRED_SECRETS)
+AUTH_COOKIE_NAME = os.getenv("AUTH_COOKIE_NAME", "reddash_auth")
+AUTH_COOKIE_DOMAIN = os.getenv("AUTH_COOKIE_DOMAIN")
+AUTH_COOKIE_SECURE = os.getenv("AUTH_COOKIE_SECURE", "false").lower() == "true"
+AUTH_TOKEN_TTL_SECONDS = int(os.getenv("AUTH_TOKEN_TTL_SECONDS", "86400"))
+AUTH_ALGORITHM = "HS256"
+
+API_REQUIRED_SECRETS = (
+    *REQUIRED_SECRETS,
+    "GOOGLE_CLIENT_ID",
+    "GOOGLE_CLIENT_SECRET",
+    "AUTH_SECRET_KEY",
+)
 ensure_required_secrets(API_REQUIRED_SECRETS)
+
+GOOGLE_CLIENT_ID = _require_env("GOOGLE_CLIENT_ID")
+GOOGLE_CLIENT_SECRET = _require_env("GOOGLE_CLIENT_SECRET")
+AUTH_SECRET_KEY = _require_env("AUTH_SECRET_KEY")
 
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Reddit Automation Report Dashboard")
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=AUTH_SECRET_KEY,
+    session_cookie="reddash_state",
+    max_age=AUTH_TOKEN_TTL_SECONDS,
+    same_site="lax",
+    https_only=AUTH_COOKIE_SECURE,
+)
+
+oauth = OAuth()
+oauth.register(
+    "google",
+    client_id=GOOGLE_CLIENT_ID,
+    client_secret=GOOGLE_CLIENT_SECRET,
+    server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
+    client_kwargs={"scope": "openid email profile"},
+)
+
 redis_client = get_redis_client()
 queue = Queue("reddit-searches", connection=redis_client)
 
@@ -121,7 +157,7 @@ def enforce_rate_limit(request: Request) -> None:
     """Naive per-IP rate limiting backed by Redis."""
 
     identifier = request.client.host if request.client else "anonymous"
-    window = datetime.utcnow().strftime("%Y%m%d%H%M")
+    window = datetime.now(timezone.utc).strftime("%Y%m%d%H%M")
     key = f"rate-limit:{identifier}:{window}"
     try:
         hits = redis_client.incr(key)
@@ -140,60 +176,129 @@ def enforce_rate_limit(request: Request) -> None:
         return
 
 
-def _resolve_request_user_id(request: Request | None) -> int:
-    """Resolve the authenticated user from headers, defaulting to the system user."""
+def _create_session_token(user: User) -> str:
+    """Issue a short-lived JWT session token for the given user."""
 
-    provider_name = None
-    account_id = None
-    display_name = None
-    email = None
-    avatar_url = None
-    plan_name = None
-    if request is not None:
-        headers = request.headers
-        provider_name = headers.get("X-RedDash-Auth-Provider")
-        account_id = (
-            headers.get("X-RedDash-Auth-Subject")
-            or headers.get("X-RedDash-Auth-Id")
+    if user.id is None:
+        raise RuntimeError("User must be persisted before creating a session token")
+
+    expires_at = datetime.now(timezone.utc) + timedelta(seconds=AUTH_TOKEN_TTL_SECONDS)
+    payload = {
+        "sub": str(user.id),
+        "provider": user.auth_provider.value,
+        "email": user.email,
+        "name": user.display_name,
+        "exp": int(expires_at.timestamp()),
+    }
+    return jwt.encode(payload, AUTH_SECRET_KEY, algorithm=AUTH_ALGORITHM)
+
+
+def _set_auth_cookie(response: Response, token: str) -> None:
+    """Attach the session JWT to the response as a cookie."""
+
+    response.set_cookie(
+        AUTH_COOKIE_NAME,
+        token,
+        max_age=AUTH_TOKEN_TTL_SECONDS,
+        httponly=True,
+        secure=AUTH_COOKIE_SECURE,
+        samesite="lax",
+        domain=AUTH_COOKIE_DOMAIN,
+        path="/",
+    )
+
+
+def _unauthorized_error(detail: str = "Authentication required.") -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail=_error_detail("unauthorized", detail),
+    )
+
+
+def require_authenticated_user(request: Request) -> User:
+    """Ensure a valid session token is present and return the user row."""
+
+    token = request.cookies.get(AUTH_COOKIE_NAME)
+    if not token:
+        raise _unauthorized_error()
+
+    try:
+        payload = jwt.decode(token, AUTH_SECRET_KEY, algorithms=[AUTH_ALGORITHM])
+    except JWTError as exc:
+        raise _unauthorized_error("Invalid or expired session.") from exc
+
+    try:
+        user_id = int(payload.get("sub"))
+    except (TypeError, ValueError):
+        raise _unauthorized_error("Malformed session payload.")
+
+    with get_session() as session:
+        user = user_repo.get_user_by_id(session, user_id)
+        if user is None or not user.is_active:
+            raise _unauthorized_error("User account is unavailable.")
+        session.refresh(user)
+        request.state.current_user = user
+        return user
+
+
+@app.get("/auth/login/google")
+async def auth_login_google(request: Request) -> Response:
+    """Initiate the Google OAuth login redirect."""
+
+    redirect_uri = str(request.url_for("auth_google_callback"))
+    return await oauth.google.authorize_redirect(request, redirect_uri)
+
+
+@app.get("/auth/callback/google", name="auth_google_callback")
+async def auth_google_callback(request: Request) -> Response:
+    """Handle Google OAuth callback, issue a JWT, and redirect home."""
+
+    try:
+        token = await oauth.google.authorize_access_token(request)
+    except OAuthError as exc:  # pragma: no cover - network dependency
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=_error_detail("oauth_error", f"Google login failed: {exc.error}"),
+        ) from exc
+
+    userinfo = token.get("userinfo") if isinstance(token, dict) else None
+    if not userinfo:
+        try:
+            userinfo = await oauth.google.parse_id_token(request, token)
+        except Exception as exc:  # pragma: no cover - network dependency
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=_error_detail("oauth_error", f"Unable to parse Google profile: {exc}"),
+            ) from exc
+
+    provider_account_id = (userinfo or {}).get("sub")
+    if not provider_account_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=_error_detail("oauth_error", "Google response missing subject claim."),
         )
-        display_name = headers.get("X-RedDash-Auth-Name")
-        email = headers.get("X-RedDash-Auth-Email")
-        avatar_url = headers.get("X-RedDash-Auth-Avatar")
-        plan_name = headers.get("X-RedDash-Subscription-Plan")
 
-    normalized_provider = (provider_name or "").strip().lower().replace("-", "_")
-    provider = AuthProvider.SYSTEM
-    if normalized_provider:
-        try:
-            provider = AuthProvider(normalized_provider)
-        except ValueError:
-            provider = AuthProvider.CUSTOM
+    email = userinfo.get("email") if userinfo else None
+    display_name = userinfo.get("name") if userinfo else None
+    avatar_url = userinfo.get("picture") if userinfo else None
 
-    normalized_plan = (plan_name or "").strip().lower()
-    subscription_plan: SubscriptionPlan | None = None
-    if normalized_plan:
-        try:
-            subscription_plan = SubscriptionPlan(normalized_plan)
-        except ValueError:
-            subscription_plan = None
-
-    resolved_account_id = (account_id or "system").strip() or "system"
     with get_session() as session:
         user = user_repo.upsert_user_from_identity(
             session,
-            provider=provider,
-            provider_account_id=resolved_account_id,
+            provider=AuthProvider.GOOGLE,
+            provider_account_id=str(provider_account_id),
             email=email,
             display_name=display_name,
             avatar_url=avatar_url,
-            subscription_plan=subscription_plan,
         )
         session.add(user)
         session.commit()
         session.refresh(user)
-        if user.id is None:  # pragma: no cover - defensive
-            raise RuntimeError("User persistence failed")
-        return user.id
+
+    jwt_token = _create_session_token(user)
+    response = RedirectResponse(url="/")
+    _set_auth_cookie(response, jwt_token)
+    return response
 
 
 def _cache_job_response(job: SearchJob, response: SearchJobResponse) -> None:
@@ -211,6 +316,7 @@ def _cache_job_response(job: SearchJob, response: SearchJobResponse) -> None:
             time_filter=job.time_filter,
             limit=job.limit,
             comments_limit=job.comments_limit,
+            user_id=job.user_id,
         )
     except RedisError as exc:  # pragma: no cover - depends on Redis availability
         logger.warning("Unable to cache job %s: %s", job.id, exc)
@@ -435,9 +541,11 @@ def _resolve_stats(
     }
 
 
-def _get_job_or_404(session, job_id: int) -> SearchJob:
+def _get_job_or_404(session, job_id: int, *, user_id: int | None = None) -> SearchJob:
     job = session.get(SearchJob, job_id)
     if job is None or job.is_deleted:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Search job not found.")
+    if user_id is not None and job.user_id != user_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Search job not found.")
     return job
 
@@ -476,8 +584,8 @@ def _fetch_reports(session, job_id: int) -> List[PersistedPostReport]:
 )
 def create_search(
     request: SearchRequest,
-    http_request: Request,
     _: None = Depends(enforce_rate_limit),
+    current_user: User = Depends(require_authenticated_user),
 ) -> SearchJobResponse:
     """Queue a Reddit search via RQ and return the job metadata."""
 
@@ -489,15 +597,15 @@ def create_search(
         time_filter=payload.time_filter,
         limit=payload.limit,
         comments_limit=payload.comments_limit,
+        user_id=current_user.id,
     )
     if cached_job is not None:
         return cached_job
 
     _enforce_concurrent_job_quota()
 
-    user_id = _resolve_request_user_id(http_request)
     job = create_search_job(
-        user_id=user_id,
+        user_id=int(current_user.id),
         query=payload.query,
         subreddits=payload.subreddits,
         time_filter=payload.time_filter,
@@ -526,7 +634,7 @@ def create_search(
             logging.INFO,
             "job_enqueued",
             job_id=job.id,
-            user_id=user_id,
+            user_id=current_user.id,
             queue_depth=current_depth,
         )
     except Exception as exc:  # pragma: no cover - depends on Redis availability
@@ -546,9 +654,11 @@ def create_search(
 
 
 @app.get("/api/searches/{job_id}", response_model=SearchJobResponse)
-def read_search(job_id: int) -> SearchJobResponse:
+def read_search(
+    job_id: int, current_user: User = Depends(require_authenticated_user)
+) -> SearchJobResponse:
     with get_session() as session:
-        job = _get_job_or_404(session, job_id)
+        job = _get_job_or_404(session, job_id, user_id=current_user.id)
         reports: List[PersistedPostReport] | None = None
         if job.status == JobStatus.SUCCEEDED:
             reports = _fetch_reports(session, job.id)
@@ -563,6 +673,7 @@ def list_searches(
     page: int = 1,
     page_size: int = 20,
     order: str = "desc",
+    current_user: User = Depends(require_authenticated_user),
 ) -> SearchJobListResponse:
     _validate_pagination(page, page_size)
     normalized_order = order.lower()
@@ -577,7 +688,10 @@ def list_searches(
         )
 
     with get_session() as session:
-        base_stmt = select(SearchJob).where(SearchJob.is_deleted.is_(False))
+        base_stmt = select(SearchJob).where(
+            SearchJob.is_deleted.is_(False),
+            SearchJob.user_id == current_user.id,
+        )
         if status_filter is not None:
             base_stmt = base_stmt.where(SearchJob.status == status_filter)
         if search:
@@ -617,9 +731,11 @@ def metrics() -> Response:
 
 
 @app.delete("/api/searches/{job_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_search(job_id: int) -> None:
+def delete_search(
+    job_id: int, current_user: User = Depends(require_authenticated_user)
+) -> None:
     with get_session() as session:
-        job = _get_job_or_404(session, job_id)
+        job = _get_job_or_404(session, job_id, user_id=current_user.id)
         session.exec(
             delete(PersistedPostReport).where(
                 PersistedPostReport.search_job_id == job.id

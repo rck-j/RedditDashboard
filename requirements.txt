@@ -9,3 +9,5 @@ rq
 sqlmodel
 prometheus_client
 psycopg[binary]
+authlib
+python-jose[cryptography]
