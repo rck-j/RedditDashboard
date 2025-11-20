@@ -8,3 +8,4 @@ redis
 rq
 sqlmodel
 prometheus_client
+psycopg[binary]

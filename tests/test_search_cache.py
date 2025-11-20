@@ -32,6 +32,7 @@ class FakeRedis:
 def fake_job() -> SearchJob:
     return SearchJob(
         id=42,
+        user_id=1,
         subreddits=["test"],
         query="automation",
         time_filter="month",

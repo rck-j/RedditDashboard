@@ -1,5 +1,7 @@
 from datetime import datetime, timezone
 import logging
+from datetime import datetime, timezone
+import logging
 from types import SimpleNamespace
 
 import pytest
@@ -7,7 +9,13 @@ from prawcore.exceptions import TooManyRequests
 from sqlmodel import SQLModel, Session, create_engine, select
 
 from src.jobs import search_runner
-from src.db.models import JobStatus, PersistedPostReport, SearchJob
+from src.db.models import (
+    AuthProvider,
+    JobStatus,
+    PersistedPostReport,
+    SearchJob,
+    User,
+)
 from src.services.analyzer import AutomationInsight, InitialAssessment, PostReport
 
 
@@ -41,7 +49,17 @@ def test_persisted_report_normalizes_required_tools() -> None:
         "",
     ])
 
-    persisted = search_runner._persisted_report_from(report, job_id=123)
+    job = SearchJob(
+        id=123,
+        user_id=1,
+        subreddits=["test"],
+        query="automation",
+        time_filter="day",
+        limit=5,
+        comments_limit=1,
+    )
+
+    persisted = search_runner._persisted_report_from(report, job)
 
     assert persisted.required_tools == ["zapier", "slack", "make", "airtable"]
 
@@ -84,7 +102,16 @@ def test_run_records_job_error_and_keeps_partial_reports(
     monkeypatch.setattr(search_runner, "search_posts", _failing_search_posts)
 
     with _get_session() as session:
+        user = User(
+            auth_provider=AuthProvider.SYSTEM,
+            provider_account_id="runner-test",
+            email="runner@example.com",
+        )
+        session.add(user)
+        session.commit()
+        session.refresh(user)
         job = SearchJob(
+            user_id=user.id,
             subreddits=["test"],
             query="automation",
             time_filter="day",

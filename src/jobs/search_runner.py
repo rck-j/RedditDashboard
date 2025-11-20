@@ -77,7 +77,7 @@ def run(
             job.total_count += 1
             _commit_job(session, job)
             report = analyzer.analyze_post(summary, comment_limit=comments_limit)
-            batch.append(_persisted_report_from(report, job.id))
+            batch.append(_persisted_report_from(report, job))
             processed += 1
             job.processed_count = processed
             score_total += report.score
@@ -160,11 +160,12 @@ def _normalize_required_tools(values: Sequence[str] | None) -> list[str]:
     return normalized
 
 
-def _persisted_report_from(report: PostReport, job_id: int | None) -> PersistedPostReport:
-    if job_id is None:  # pragma: no cover - defensive
+def _persisted_report_from(report: PostReport, job: SearchJob) -> PersistedPostReport:
+    if job.id is None:  # pragma: no cover - defensive
         raise RuntimeError("Search job must be stored before persisting reports")
     return PersistedPostReport(
-        search_job_id=job_id,
+        search_job_id=job.id,
+        user_id=job.user_id,
         submission_id=report.submission_id,
         subreddit=report.subreddit,
         title=report.title,

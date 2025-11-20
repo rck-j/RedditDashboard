@@ -27,7 +27,15 @@ from src.api.schemas import (
     SearchJobStats,
     SearchRequest,
 )
-from src.db.models import JobStatus, PersistedPostReport, SearchJob
+from src.db.migrations import run_migrations
+from src.db.models import (
+    AuthProvider,
+    JobStatus,
+    PersistedPostReport,
+    SearchJob,
+    SubscriptionPlan,
+)
+from src.db.repositories import user_repo
 from src.db.session import engine, get_session
 from src.env import REQUIRED_SECRETS, ensure_required_secrets
 from src.infra.observability import log_structured, set_queue_depth
@@ -99,7 +107,7 @@ queue = Queue("reddit-searches", connection=redis_client)
 def _init_db() -> None:
     """Ensure SQLModel tables exist before serving traffic."""
 
-    SQLModel.metadata.create_all(engine)
+    run_migrations(engine)
 
 
 def _error_detail(code: str, message: str, *, field: str | None = None) -> Dict[str, str]:
@@ -130,6 +138,62 @@ def enforce_rate_limit(request: Request) -> None:
     except RedisError:  # pragma: no cover - network-dependent
         # Fall back to allowing the request when Redis is unavailable.
         return
+
+
+def _resolve_request_user_id(request: Request | None) -> int:
+    """Resolve the authenticated user from headers, defaulting to the system user."""
+
+    provider_name = None
+    account_id = None
+    display_name = None
+    email = None
+    avatar_url = None
+    plan_name = None
+    if request is not None:
+        headers = request.headers
+        provider_name = headers.get("X-RedDash-Auth-Provider")
+        account_id = (
+            headers.get("X-RedDash-Auth-Subject")
+            or headers.get("X-RedDash-Auth-Id")
+        )
+        display_name = headers.get("X-RedDash-Auth-Name")
+        email = headers.get("X-RedDash-Auth-Email")
+        avatar_url = headers.get("X-RedDash-Auth-Avatar")
+        plan_name = headers.get("X-RedDash-Subscription-Plan")
+
+    normalized_provider = (provider_name or "").strip().lower().replace("-", "_")
+    provider = AuthProvider.SYSTEM
+    if normalized_provider:
+        try:
+            provider = AuthProvider(normalized_provider)
+        except ValueError:
+            provider = AuthProvider.CUSTOM
+
+    normalized_plan = (plan_name or "").strip().lower()
+    subscription_plan: SubscriptionPlan | None = None
+    if normalized_plan:
+        try:
+            subscription_plan = SubscriptionPlan(normalized_plan)
+        except ValueError:
+            subscription_plan = None
+
+    resolved_account_id = (account_id or "system").strip() or "system"
+    with get_session() as session:
+        user = user_repo.upsert_user_from_identity(
+            session,
+            provider=provider,
+            provider_account_id=resolved_account_id,
+            email=email,
+            display_name=display_name,
+            avatar_url=avatar_url,
+            subscription_plan=subscription_plan,
+        )
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+        if user.id is None:  # pragma: no cover - defensive
+            raise RuntimeError("User persistence failed")
+        return user.id
 
 
 def _cache_job_response(job: SearchJob, response: SearchJobResponse) -> None:
@@ -412,6 +476,7 @@ def _fetch_reports(session, job_id: int) -> List[PersistedPostReport]:
 )
 def create_search(
     request: SearchRequest,
+    http_request: Request,
     _: None = Depends(enforce_rate_limit),
 ) -> SearchJobResponse:
     """Queue a Reddit search via RQ and return the job metadata."""
@@ -430,7 +495,9 @@ def create_search(
 
     _enforce_concurrent_job_quota()
 
+    user_id = _resolve_request_user_id(http_request)
     job = create_search_job(
+        user_id=user_id,
         query=payload.query,
         subreddits=payload.subreddits,
         time_filter=payload.time_filter,
@@ -459,6 +526,7 @@ def create_search(
             logging.INFO,
             "job_enqueued",
             job_id=job.id,
+            user_id=user_id,
             queue_depth=current_depth,
         )
     except Exception as exc:  # pragma: no cover - depends on Redis availability

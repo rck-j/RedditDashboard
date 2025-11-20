@@ -9,7 +9,8 @@ A web application for reviewing query results from the PRAW. Enter the subreddit
    pip install -r requirements.txt
    ```
 2. Copy `.env.example` into `.env` and fill in the secrets described below. Both the CLI (`red.py`) and the FastAPI server call `_require_env` at startup, so missing values halt the process with a descriptive error.
-3. Optional: override the default prompts by editing `config/prompts.json`.
+3. Provision a Postgres database (local or hosted) and set `DATABASE_URL` accordingly before starting the API or RQ workers.
+4. Optional: override the default prompts by editing `config/prompts.json`.
 
 ### Required environment variables
 
@@ -18,6 +19,7 @@ A web application for reviewing query results from the PRAW. Enter the subreddit
 | `OPENAI_API_KEY` | Used by `red.py` and the RQ worker to call the OpenAI Responses API. |
 | `PRAW_CLIENT_ID` / `PRAW_CLIENT_SECRET` | OAuth credentials for accessing Reddit's API through PRAW. |
 | `PRAW_USER_AGENT` | Custom user-agent string so Reddit can identify your application. |
+| `DATABASE_URL` | SQLAlchemy connection string for your Postgres instance (for example, `postgresql+psycopg://reddash:reddash@localhost:5432/reddash`). |
 
 ### Optional but recommended variables
 
@@ -27,7 +29,7 @@ A web application for reviewing query results from the PRAW. Enter the subreddit
 | `PRAW_USERNAME` / `PRAW_PASSWORD` | Only needed for flows that require authenticated Reddit actions. Included for completeness in `.env.example`. |
 | `REDIS_URL` | Points the API and workers at your Redis instance (defaults to `redis://localhost:6379/0`). |
 | `SEARCH_CACHE_TTL_SECONDS` | How long (in seconds) to reuse cached search jobs. |
-| `SEARCH_JOB_TTL_DAYS` | TTL (in days) for persisted search jobs in SQLite. |
+| `SEARCH_JOB_TTL_DAYS` | TTL (in days) for persisted search jobs in the relational database. |
 
 If `_require_env` raises `Missing <NAME>; define it in .env or your shell.`, double-check spelling, confirm the variable is exported in your shell, or ensure the `.env` file sits next to the repository root.
 
@@ -58,7 +60,7 @@ If `_require_env` raises `Missing <NAME>; define it in .env or your shell.`, dou
        "comments_limit": 5
      }'
    ```
-4. Each POST creates a `SearchJob` database row, enqueues `src.jobs.search_runner.run` via RQ, and immediately returns the job metadata (including timestamps, counts, and status). RQ workers stream their progress back into SQLite, creating `PersistedPostReport` rows linked to each job.
+4. Each POST creates a `SearchJob` database row, enqueues `src.jobs.search_runner.run` via RQ, and immediately returns the job metadata (including timestamps, counts, and status). RQ workers stream their progress back into Postgres, creating `PersistedPostReport` rows linked to each job.
 
 ### Observability and metrics
 
@@ -81,5 +83,5 @@ If `_require_env` raises `Missing <NAME>; define it in .env or your shell.`, dou
 ## Caching and retention
 
 - The `/api/searches` endpoint consults a Redis cache before enqueuing new work. Search parameters are normalized (subreddits are lower-cased and sorted, whitespace is collapsed, etc.) and hashed into a cache key. If a fresh job exists for the same inputs, the API immediately returns that job instead of duplicating the work. Control the freshness window via `SEARCH_CACHE_TTL_SECONDS` (defaults to one hour).
-- Each worker run calls `src.infra.cleanup.purge_expired_jobs()` before processing new posts. This enforces a rolling TTL for `SearchJob` rows (and their related `PersistedPostReport` entries) so the SQLite file stays small. Override the default 30-day limit with the `SEARCH_JOB_TTL_DAYS` environment variable.
+- Each worker run calls `src.infra.cleanup.purge_expired_jobs()` before processing new posts. This enforces a rolling TTL for `SearchJob` rows (and their related `PersistedPostReport` entries) so the Postgres database stays lean. Override the default 30-day limit with the `SEARCH_JOB_TTL_DAYS` environment variable.
 

@@ -4,6 +4,7 @@ from typing import Dict, List, Tuple
 
 import json
 from datetime import datetime, timezone
+from itertools import count
 
 import pytest
 from fastapi import status
@@ -12,7 +13,14 @@ from sqlmodel import SQLModel, Session, create_engine, select
 
 from src import config as app_config
 from src.api.schemas import SearchJobResponse, SearchJobStats
-from src.db.models import JobStatus, PersistedPostReport, SearchJob
+from src.db.models import (
+    AuthProvider,
+    JobStatus,
+    PersistedPostReport,
+    SearchJob,
+    SubscriptionPlan,
+    User,
+)
 from src.db import session as db_session
 from src.ui import report_dashboard
 
@@ -56,8 +64,36 @@ def api_client(monkeypatch: pytest.MonkeyPatch, tmp_path) -> Tuple[TestClient, L
     enqueue_calls.clear()
 
 
+_USER_SEQUENCE = count(1)
+
+
+def _create_user(**overrides) -> User:
+    identifier = next(_USER_SEQUENCE)
+    user = User(
+        auth_provider=overrides.pop("auth_provider", AuthProvider.SYSTEM),
+        provider_account_id=overrides.pop(
+            "provider_account_id", f"test-user-{identifier}"
+        ),
+        email=overrides.pop("email", f"user{identifier}@example.com"),
+        display_name=overrides.pop("display_name", "Test User"),
+        subscription_plan=overrides.pop(
+            "subscription_plan", SubscriptionPlan.FREE
+        ),
+        **overrides,
+    )
+    with db_session.get_session() as session:
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+        return user
+
+
 def _create_job(**overrides) -> SearchJob:
+    user_id = overrides.pop("user_id", None)
+    if user_id is None:
+        user_id = _create_user().id
     job = SearchJob(
+        user_id=user_id,
         subreddits=overrides.pop("subreddits", ["test"]),
         query=overrides.pop("query", "automation"),
         time_filter=overrides.pop("time_filter", "month"),
@@ -73,8 +109,14 @@ def _create_job(**overrides) -> SearchJob:
 
 
 def _create_report(job_id: int, **overrides) -> PersistedPostReport:
+    user_id = overrides.pop("user_id", None)
+    if user_id is None:
+        with db_session.get_session() as session:
+            job = session.get(SearchJob, job_id)
+            user_id = job.user_id if job else None
     report = PersistedPostReport(
         search_job_id=job_id,
+        user_id=user_id,
         submission_id=overrides.pop("submission_id", "abc123"),
         subreddit=overrides.pop("subreddit", "test"),
         title=overrides.pop("title", "Example"),
