@@ -39,6 +39,45 @@ def get_user_by_provider_identity(
     return session.exec(stmt).first()
 
 
+def get_user_by_email(session: Session, email: str) -> User | None:
+    """Fetch a user by their normalized email address."""
+
+    stmt = select(User).where(User.email == email)
+    return session.exec(stmt).first()
+
+
+def create_local_user(
+    session: Session,
+    *,
+    email: str,
+    password_hash: str,
+    password_salt: str,
+    display_name: str | None = None,
+    subscription_plan: SubscriptionPlan | None = None,
+    is_active: bool = True,
+) -> User:
+    """Create a local (email/password) account."""
+
+    existing = get_user_by_email(session, email)
+    if existing is not None:
+        raise ValueError(f"User with email {email} already exists")
+
+    user = User(
+        auth_provider=AuthProvider.CUSTOM,
+        provider_account_id=email,
+        email=email,
+        display_name=display_name or email,
+        password_hash=password_hash,
+        password_salt=password_salt,
+        subscription_plan=subscription_plan or SubscriptionPlan.FREE,
+        is_active=is_active,
+        last_login_at=_utcnow(),
+    )
+    session.add(user)
+    session.flush()
+    return user
+
+
 def upsert_user_from_identity(
     session: Session,
     *,
@@ -130,8 +169,10 @@ def ensure_system_user(session: Session) -> User:
 
 __all__ = [
     "UserNotFoundError",
+    "create_local_user",
     "deactivate_user",
     "ensure_system_user",
+    "get_user_by_email",
     "get_user_by_id",
     "get_user_by_provider_identity",
     "upsert_user_from_identity",

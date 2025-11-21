@@ -2,9 +2,12 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import hmac
 import json
 import logging
 import os
+import secrets
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Sequence
@@ -29,6 +32,11 @@ from src.api.schemas import (
     SearchJobResponse,
     SearchJobStats,
     SearchRequest,
+    EmailAuthRequest,
+    EmailSignupRequest,
+    SessionResponse,
+    SessionUsage,
+    SessionUser,
 )
 from src.db.migrations import run_migrations
 from src.db.models import (
@@ -109,6 +117,9 @@ AUTH_COOKIE_DOMAIN = os.getenv("AUTH_COOKIE_DOMAIN")
 AUTH_COOKIE_SECURE = os.getenv("AUTH_COOKIE_SECURE", "false").lower() == "true"
 AUTH_TOKEN_TTL_SECONDS = int(os.getenv("AUTH_TOKEN_TTL_SECONDS", "86400"))
 AUTH_ALGORITHM = "HS256"
+PASSWORD_HASH_NAME = os.getenv("PASSWORD_HASH_NAME", "sha256")
+PASSWORD_ITERATIONS = int(os.getenv("PASSWORD_ITERATIONS", "130000"))
+PASSWORD_SALT_BYTES = int(os.getenv("PASSWORD_SALT_BYTES", "16"))
 
 API_REQUIRED_SECRETS = (
     *REQUIRED_SECRETS,
@@ -236,6 +247,37 @@ def _set_auth_cookie(response: Response, token: str) -> None:
     )
 
 
+def _clear_auth_cookie(response: Response) -> None:
+    """Remove the session JWT from the browser."""
+
+    response.delete_cookie(
+        AUTH_COOKIE_NAME,
+        domain=AUTH_COOKIE_DOMAIN,
+        path="/",
+    )
+
+
+def _normalize_email(email: str) -> str:
+    return (email or "").strip().lower()
+
+
+def _derive_password_hash(password: str, salt: str) -> str:
+    secret = password.encode("utf-8")
+    salt_bytes = bytes.fromhex(salt)
+    digest = hashlib.pbkdf2_hmac(
+        PASSWORD_HASH_NAME,
+        secret,
+        salt_bytes,
+        PASSWORD_ITERATIONS,
+    )
+    return digest.hex()
+
+
+def _verify_password(password: str, *, salt: str, expected_hash: str) -> bool:
+    calculated = _derive_password_hash(password, salt)
+    return hmac.compare_digest(calculated, expected_hash)
+
+
 def _unauthorized_error(detail: str = "Authentication required.") -> HTTPException:
     return HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -243,30 +285,144 @@ def _unauthorized_error(detail: str = "Authentication required.") -> HTTPExcepti
     )
 
 
-def require_authenticated_user(request: Request) -> User:
-    """Ensure a valid session token is present and return the user row."""
-
+def _resolve_user_from_cookie(request: Request) -> User | None:
     token = request.cookies.get(AUTH_COOKIE_NAME)
     if not token:
-        raise _unauthorized_error()
+        return None
 
     try:
         payload = jwt.decode(token, AUTH_SECRET_KEY, algorithms=[AUTH_ALGORITHM])
-    except JWTError as exc:
-        raise _unauthorized_error("Invalid or expired session.") from exc
-
-    try:
         user_id = int(payload.get("sub"))
-    except (TypeError, ValueError):
-        raise _unauthorized_error("Malformed session payload.")
+    except (JWTError, TypeError, ValueError):
+        return None
 
     with get_session() as session:
         user = user_repo.get_user_by_id(session, user_id)
         if user is None or not user.is_active:
-            raise _unauthorized_error("User account is unavailable.")
+            return None
         session.refresh(user)
         request.state.current_user = user
         return user
+
+
+def require_authenticated_user(request: Request) -> User:
+    """Ensure a valid session token is present and return the user row."""
+
+    user = _resolve_user_from_cookie(request)
+    if user is None:
+        raise _unauthorized_error()
+    return user
+
+
+def _session_user_payload(user: User) -> SessionUser:
+    if user.id is None:
+        raise RuntimeError("User must be persisted before building a session payload")
+
+    return SessionUser(
+        id=int(user.id),
+        display_name=user.display_name,
+        email=user.email,
+        avatar_url=user.avatar_url,
+        subscription_plan=user.subscription_plan,
+    )
+
+
+def _session_usage(user: User) -> SessionUsage:
+    policy = get_plan_policy(user.subscription_plan)
+    window_start = datetime.now(timezone.utc) - timedelta(days=1)
+    jobs_today = count_jobs_created_since(user_id=int(user.id), since_utc=window_start)
+    active_jobs = count_active_jobs(user_id=int(user.id))
+    remaining = None
+    if policy.daily_job_limit is not None:
+        remaining = max(policy.daily_job_limit - jobs_today, 0)
+
+    return SessionUsage(
+        jobs_today=jobs_today,
+        daily_limit=policy.daily_job_limit,
+        jobs_remaining=remaining,
+        active_jobs=active_jobs,
+        concurrent_limit=policy.concurrent_job_limit,
+    )
+
+
+def _session_payload(request: Request, response: Response, user: User) -> SessionResponse:
+    jwt_token = _create_session_token(user)
+    _set_auth_cookie(response, jwt_token)
+    return SessionResponse(
+        authenticated=True,
+        login_url=str(request.url_for("auth_login_google")),
+        user=_session_user_payload(user),
+        usage=_session_usage(user),
+    )
+
+
+@app.post("/auth/signup", response_model=SessionResponse)
+def auth_signup(
+    request: Request, response: Response, payload: EmailSignupRequest
+) -> SessionResponse:
+    """Register a local account using email/password credentials."""
+
+    normalized_email = _normalize_email(payload.email)
+    if not normalized_email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=_error_detail("invalid_email", "Email address is required."),
+        )
+    salt = secrets.token_hex(PASSWORD_SALT_BYTES)
+    password_hash = _derive_password_hash(payload.password, salt)
+    display_name = payload.display_name or normalized_email.split("@")[0]
+
+    with get_session() as session:
+        try:
+            user = user_repo.create_local_user(
+                session,
+                email=normalized_email,
+                password_hash=password_hash,
+                password_salt=salt,
+                display_name=display_name,
+            )
+            session.commit()
+            session.refresh(user)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=_error_detail("email_exists", str(exc)),
+            ) from exc
+
+    return _session_payload(request, response, user)
+
+
+@app.post("/auth/login/email", response_model=SessionResponse)
+def auth_login_email(
+    request: Request, response: Response, payload: EmailAuthRequest
+) -> SessionResponse:
+    """Authenticate a local user with email/password credentials."""
+
+    normalized_email = _normalize_email(payload.email)
+    with get_session() as session:
+        user = user_repo.get_user_by_email(session, normalized_email)
+        if (
+            user is None
+            or user.auth_provider != AuthProvider.CUSTOM
+            or not user.password_hash
+            or not user.password_salt
+        ):
+            raise _unauthorized_error("Invalid email or password.")
+        if not user.is_active:
+            raise _unauthorized_error("Account is disabled.")
+        if not _verify_password(
+            payload.password,
+            salt=user.password_salt,
+            expected_hash=user.password_hash,
+        ):
+            raise _unauthorized_error("Invalid email or password.")
+
+        user.last_login_at = datetime.now(timezone.utc)
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+
+    return _session_payload(request, response, user)
 
 
 @app.get("/auth/login/google")
@@ -326,6 +482,19 @@ async def auth_google_callback(request: Request) -> Response:
     jwt_token = _create_session_token(user)
     response = RedirectResponse(url="/")
     _set_auth_cookie(response, jwt_token)
+    return response
+
+
+@app.get("/auth/logout")
+def auth_logout(request: Request) -> Response:
+    """Clear session cookies and return to the dashboard shell."""
+
+    response = RedirectResponse(url="/")
+    _clear_auth_cookie(response)
+    try:
+        request.session.clear()
+    except Exception:  # pragma: no cover - session backend specific
+        pass
     return response
 
 
@@ -489,6 +658,23 @@ def read_app_config() -> AppConfigResponse:
     """Expose shared search and analyzer metadata for the dashboard UI."""
 
     return AppConfigResponse.model_validate(app_config.get_app_config())
+
+
+@app.get("/api/session", response_model=SessionResponse)
+def read_session(request: Request) -> SessionResponse:
+    """Return authentication state and per-user quota usage."""
+
+    login_url = str(request.url_for("auth_login_google"))
+    user = _resolve_user_from_cookie(request)
+    if user is None:
+        return SessionResponse(authenticated=False, login_url=login_url)
+
+    return SessionResponse(
+        authenticated=True,
+        login_url=login_url,
+        user=_session_user_payload(user),
+        usage=_session_usage(user),
+    )
 
 
 def _job_response(
