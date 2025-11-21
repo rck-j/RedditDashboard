@@ -9,6 +9,7 @@ from itertools import count
 import pytest
 from fastapi import Request, status
 from fastapi.testclient import TestClient
+from jose import jwt
 from sqlalchemy.exc import SQLAlchemyError
 from sqlmodel import SQLModel, Session, create_engine, select
 
@@ -640,3 +641,23 @@ def test_auth_login_handles_db_errors(api_client, monkeypatch):
 
     assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
     assert response.json()["detail"]["code"] == "login_failed"
+
+
+def test_create_session_token_allows_string_provider() -> None:
+    user = User(
+        id=1,
+        auth_provider="custom",
+        provider_account_id="user@example.com",
+        email="user@example.com",
+        display_name="Example User",
+    )
+
+    token = report_dashboard._create_session_token(user)
+    payload = jwt.decode(
+        token,
+        report_dashboard.AUTH_SECRET_KEY,
+        algorithms=[report_dashboard.AUTH_ALGORITHM],
+    )
+
+    assert payload["provider"] == AuthProvider.CUSTOM.value
+    assert payload["sub"] == str(user.id)
