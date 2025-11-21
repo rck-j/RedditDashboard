@@ -77,7 +77,7 @@ def test_run_records_job_error_and_keeps_partial_reports(
         return Session(engine)
 
     monkeypatch.setattr(search_runner, "get_session", _get_session, raising=False)
-    monkeypatch.setattr(search_runner, "purge_expired_jobs", lambda: None)
+    monkeypatch.setattr(search_runner, "purge_expired_jobs_by_plan", lambda *args, **kwargs: {})
     monkeypatch.setattr(search_runner, "build_reddit_client", lambda: object())
     monkeypatch.setattr(
         search_runner, "build_openai_client", lambda: (object(), "test-model")

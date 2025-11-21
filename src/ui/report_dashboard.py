@@ -1,6 +1,7 @@
 """Web dashboard for viewing Reddit automation reports."""
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -41,17 +42,23 @@ from src.db.models import (
 from src.db.repositories import user_repo
 from src.db.session import engine, get_session
 from src.env import REQUIRED_SECRETS, _require_env, ensure_required_secrets
+from src.infra.cleanup import purge_expired_jobs_by_plan
 from src.infra.observability import log_structured, set_queue_depth
 from src.infra.redis import get_redis_client
 from src.infra.search_cache import (
     fetch_cached_job_response,
     remember_search_job_response,
 )
-from src.infra.search_jobs import count_active_jobs, create_search_job
+from src.infra.search_jobs import (
+    count_active_jobs,
+    count_jobs_created_since,
+    create_search_job,
+)
 from src.jobs import search_runner
 from src.jobs.job_errors import JobError
 from src import config as app_config
 from src.services.job_stats import build_search_job_stats
+from src.services.plans import archival_plans, get_plan_policy, plan_retention_days
 
 try:
     from red import PostReport as BasePostReport
@@ -94,7 +101,8 @@ ROOT_DIR = Path(__file__).resolve().parents[2]
 TEMPLATES = Jinja2Templates(directory=str(ROOT_DIR / "templates"))
 
 RATE_LIMIT_REQUESTS_PER_MINUTE = 30
-DEFAULT_MAX_CONCURRENT_JOBS = 3
+JOB_CLEANUP_INTERVAL_SECONDS = int(os.getenv("JOB_CLEANUP_INTERVAL_SECONDS", "3600"))
+ENABLE_JOB_CLEANUP = os.getenv("ENABLE_JOB_CLEANUP", "true").lower() != "false"
 
 AUTH_COOKIE_NAME = os.getenv("AUTH_COOKIE_NAME", "reddash_auth")
 AUTH_COOKIE_DOMAIN = os.getenv("AUTH_COOKIE_DOMAIN")
@@ -144,6 +152,26 @@ def _init_db() -> None:
     """Ensure SQLModel tables exist before serving traffic."""
 
     run_migrations(engine)
+
+
+async def _cleanup_loop() -> None:
+    while True:
+        try:
+            purge_expired_jobs_by_plan(
+                plan_retention_days(), archive_only_plans=archival_plans()
+            )
+        except Exception:  # pragma: no cover - defensive logging
+            logger.exception("job_cleanup_failed")
+        await asyncio.sleep(max(JOB_CLEANUP_INTERVAL_SECONDS, 60))
+
+
+@app.on_event("startup")
+async def _schedule_cleanup() -> None:
+    """Launch recurring cleanup of expired jobs per subscription plan."""
+
+    if not ENABLE_JOB_CLEANUP or JOB_CLEANUP_INTERVAL_SECONDS <= 0:
+        return
+    asyncio.create_task(_cleanup_loop())
 
 
 def _error_detail(code: str, message: str, *, field: str | None = None) -> Dict[str, str]:
@@ -322,29 +350,42 @@ def _cache_job_response(job: SearchJob, response: SearchJobResponse) -> None:
         logger.warning("Unable to cache job %s: %s", job.id, exc)
 
 
-def _max_concurrent_jobs() -> int:
-    raw_value = os.getenv("MAX_CONCURRENT_JOBS")
-    try:
-        value = int(raw_value) if raw_value is not None else DEFAULT_MAX_CONCURRENT_JOBS
-    except ValueError:
-        value = DEFAULT_MAX_CONCURRENT_JOBS
-    return max(value, 0)
+def _enforce_user_job_quotas(user: User) -> None:
+    """Apply per-plan limits before enqueueing work for a user."""
 
-
-def _enforce_concurrent_job_quota() -> None:
-    limit = _max_concurrent_jobs()
-    if limit <= 0:
-        return
-    active_jobs = count_active_jobs()
-    if active_jobs >= limit:
+    policy = get_plan_policy(user.subscription_plan)
+    if user.id is None:
         raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=_error_detail(
-                "job_quota_exceeded",
-                "Too many searches are currently running. "
-                "Please wait for existing jobs to finish before starting another run.",
-            ),
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=_error_detail("unauthorized", "User session is not initialized."),
         )
+
+    if policy.daily_job_limit is not None and policy.daily_job_limit > 0:
+        window_start = datetime.now(timezone.utc) - timedelta(days=1)
+        recent_jobs = count_jobs_created_since(
+            user_id=user.id, since_utc=window_start
+        )
+        if recent_jobs >= policy.daily_job_limit:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=_error_detail(
+                    "daily_quota_exceeded",
+                    "Daily search quota exceeded for your plan. "
+                    f"Limit: {policy.daily_job_limit} per 24 hours.",
+                ),
+            )
+
+    if policy.concurrent_job_limit is not None and policy.concurrent_job_limit > 0:
+        active_jobs = count_active_jobs(user_id=user.id)
+        if active_jobs >= policy.concurrent_job_limit:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=_error_detail(
+                    "job_quota_exceeded",
+                    "Too many searches are currently running for your plan. "
+                    "Please wait for existing jobs to finish before starting another run.",
+                ),
+            )
 
 
 def _summarize_text(value: str, *, limit: int = 240) -> str:
@@ -602,7 +643,7 @@ def create_search(
     if cached_job is not None:
         return cached_job
 
-    _enforce_concurrent_job_quota()
+    _enforce_user_job_quotas(current_user)
 
     job = create_search_job(
         user_id=int(current_user.id),
