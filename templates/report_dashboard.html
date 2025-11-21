@@ -1352,6 +1352,29 @@
         elements.formFeedback.dataset.variant = variant;
       }
 
+      function setAuthFeedback(message, variant = "info") {
+        if (!elements.authFeedback) return;
+        elements.authFeedback.textContent = message || "";
+        elements.authFeedback.dataset.variant = variant;
+      }
+
+      function switchAuthMode(mode = "login") {
+        state.authMode = mode === "signup" ? "signup" : "login";
+        if (elements.authTabs?.length) {
+          elements.authTabs.forEach((tab) => {
+            const isActive = tab.dataset.authMode === state.authMode;
+            tab.classList.toggle("active", isActive);
+            tab.setAttribute("aria-selected", isActive ? "true" : "false");
+          });
+        }
+        if (elements.loginForm) {
+          elements.loginForm.hidden = state.authMode !== "login";
+        }
+        if (elements.signupForm) {
+          elements.signupForm.hidden = state.authMode !== "signup";
+        }
+      }
+
       async function fetchJson(url, options = {}) {
         const config = { ...options };
         const headers = {
@@ -2506,6 +2529,7 @@
       async function initialize() {
         renderSubredditOptions(DEFAULT_SUBREDDITS);
         refreshFilterControls({ rebind: true });
+        bindAuthForms();
         bindSubredditAdder();
         bindRangeInputs();
         bindJobStatusActions();

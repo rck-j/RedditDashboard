@@ -66,6 +66,16 @@ class User(SQLModel, table=True):
         default=None,
         sa_column=Column(String(512), nullable=True),
     )
+    password_hash: str | None = Field(
+        default=None,
+        sa_column=Column(String(255), nullable=True),
+        description="PBKDF2-derived hash for local accounts.",
+    )
+    password_salt: str | None = Field(
+        default=None,
+        sa_column=Column(String(255), nullable=True),
+        description="Hex-encoded salt used when deriving the password hash.",
+    )
     auth_provider: AuthProvider = Field(
         default=AuthProvider.SYSTEM,
         sa_column=Column(String(32), nullable=False),

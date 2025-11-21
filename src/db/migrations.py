@@ -36,6 +36,21 @@ def _ensure_user_id_column(engine: Engine, table_name: str) -> None:
         )
 
 
+def _ensure_password_columns(engine: Engine) -> None:
+    inspector = inspect(engine)
+    columns = _table_columns(inspector, "users")
+    statements: list[str] = []
+    if "password_hash" not in columns:
+        statements.append("ALTER TABLE users ADD COLUMN password_hash VARCHAR(255)")
+    if "password_salt" not in columns:
+        statements.append("ALTER TABLE users ADD COLUMN password_salt VARCHAR(255)")
+    if not statements:
+        return
+    with engine.begin() as connection:
+        for stmt in statements:
+            connection.exec_driver_sql(stmt)
+
+
 def _backfill_owner(engine: Engine) -> None:
     with _session_scope(engine) as session:
         system_user = user_repo.ensure_system_user(session)
@@ -63,6 +78,7 @@ def run_migrations(engine: Engine) -> None:
         # Nothing else to do when the database is new.
         return
 
+    _ensure_password_columns(engine)
     if "search_jobs" in tables:
         _ensure_user_id_column(engine, "search_jobs")
     if "post_reports" in tables:

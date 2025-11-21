@@ -6,7 +6,7 @@ from datetime import datetime
 import re
 from typing import List, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from src.db.models import JobStatus, SubscriptionPlan
 from src.jobs.job_errors import JobError
