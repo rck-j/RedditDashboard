@@ -9,6 +9,7 @@ from itertools import count
 import pytest
 from fastapi import Request, status
 from fastapi.testclient import TestClient
+from sqlalchemy.exc import SQLAlchemyError
 from sqlmodel import SQLModel, Session, create_engine, select
 
 from src import config as app_config
@@ -22,6 +23,7 @@ from src.db.models import (
     User,
 )
 from src.db import session as db_session
+from src.db.repositories import user_repo
 from src.ui import report_dashboard
 from src.infra.cleanup import purge_expired_jobs_by_plan
 from src.services.plans import archival_plans, get_plan_policy, plan_retention_days
@@ -622,3 +624,19 @@ def test_get_app_config_returns_metadata(api_client) -> None:
     )
     prompts = app_config.get_prompts()
     assert payload["prompts"]["initial_assessment"] == prompts["initial_assessment"]
+
+
+def test_auth_login_handles_db_errors(api_client, monkeypatch):
+    client, _, _ = api_client
+
+    def _raise(*_, **__):
+        raise SQLAlchemyError("boom")
+
+    monkeypatch.setattr(user_repo, "verify_user_credentials", _raise)
+
+    payload = {"email": "user@example.com", "password": "password123"}
+
+    response = client.post("/auth/login", json=payload)
+
+    assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+    assert response.json()["detail"]["code"] == "login_failed"
