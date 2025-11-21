@@ -231,6 +231,29 @@ def test_create_search_enqueues_job(api_client) -> None:
     assert enqueue_calls and enqueue_calls[0]["args"][0] == report_dashboard.search_runner.run
 
 
+def test_create_search_accepts_form_payload(api_client) -> None:
+    client, enqueue_calls, _ = api_client
+
+    response = client.post(
+        "/api/searches",
+        data={
+            "subreddits": "smallbusiness, entrepreneur",
+            "query": "automation",
+            "time_filter": "week",
+            "limit": "2",
+            "comments_limit": "3",
+        },
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED
+    body = response.json()
+    assert body["subreddits"] == ["smallbusiness", "entrepreneur"]
+    assert body["query"] == "automation"
+    assert body["limit"] == 2
+    assert body["comments_limit"] == 3
+    assert enqueue_calls and enqueue_calls[0]["args"][0] == report_dashboard.search_runner.run
+
+
 def test_create_search_returns_cached_job(api_client, monkeypatch) -> None:
     client, enqueue_calls, _ = api_client
     stats = SearchJobStats(

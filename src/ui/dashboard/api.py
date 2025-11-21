@@ -6,7 +6,8 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Sequence
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from fastapi.exceptions import RequestValidationError
 from pydantic import ValidationError
 from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
@@ -40,6 +41,43 @@ from src.ui.dashboard.reports import PostReport, get_reports
 logger = logging.getLogger(__name__)
 
 api_router = APIRouter(prefix="/api")
+
+
+async def _parse_search_request(request: Request) -> SearchRequest:
+    """Handle JSON or HTML form submissions for search jobs."""
+
+    content_type = request.headers.get("content-type", "")
+
+    if "application/json" in content_type:
+        try:
+            payload = await request.json()
+        except json.JSONDecodeError as exc:  # pragma: no cover - defensive
+            raise RequestValidationError(
+                [
+                    {
+                        "loc": ("body",),
+                        "msg": "Request body contains invalid JSON.",
+                        "type": "json_invalid",
+                        "input": await request.body(),
+                        "ctx": {"error": str(exc)},
+                    }
+                ]
+            ) from exc
+    else:
+        form = await request.form()
+        payload = dict(form)
+        subreddits = payload.get("subreddits")
+        if isinstance(subreddits, str):
+            payload["subreddits"] = [
+                subreddit.strip()
+                for subreddit in subreddits.split(",")
+                if subreddit.strip()
+            ]
+
+    try:
+        return SearchRequest.model_validate(payload)
+    except ValidationError as exc:
+        raise RequestValidationError(exc.errors(), body=payload) from exc
 
 
 def _cache_job_response(job: SearchJob, response: SearchJobResponse) -> None:
@@ -277,7 +315,7 @@ def read_session(request: Request) -> SessionResponse:
 )
 def create_search(
     request: Request,
-    search_request: SearchRequest = Body(...),
+    search_request: SearchRequest = Depends(_parse_search_request),
     current_user: User = Depends(require_authenticated_user),
     _: None = Depends(enforce_rate_limit),
 ) -> SearchJobResponse:
