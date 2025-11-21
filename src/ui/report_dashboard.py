@@ -17,6 +17,7 @@ from fastapi.templating import Jinja2Templates
 from jose import JWTError, jwt
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from pydantic import BaseModel, Field, ValidationError
+from sqlalchemy.exc import SQLAlchemyError
 from redis.exceptions import RedisError
 from rq import Queue
 from sqlalchemy import func
@@ -410,6 +411,8 @@ def auth_signup(
                 display_name=display_name,
                 subscription_plan=SubscriptionPlan.FREE,
             )
+            session.commit()
+            session.refresh(user)
         except ValueError as exc:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -419,8 +422,16 @@ def auth_signup(
                     field="email",
                 ),
             ) from exc
-        session.commit()
-        session.refresh(user)
+        except SQLAlchemyError as exc:  # pragma: no cover - depends on DB availability
+            session.rollback()
+            logger.exception("signup_db_error")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=_error_detail(
+                    "signup_failed",
+                    "Unable to create your account right now. Please try again later.",
+                ),
+            ) from exc
 
     jwt_token = _create_session_token(user)
     _set_auth_cookie(response, jwt_token)
