@@ -226,16 +226,16 @@ class EmailSignupRequest(EmailAuthRequest):
 
 def _email_auth_request(
     payload: EmailAuthRequest | None = Body(None),
-    form_email: str | None = Form(None),
-    form_password: str | None = Form(None),
+    email: str | None = Form(None),
+    password: str | None = Form(None),
 ) -> EmailAuthRequest:
     """Accept either JSON or form-encoded login submissions."""
 
     if payload is not None:
         return payload
 
-    if form_email is not None or form_password is not None:
-        return EmailAuthRequest(email=form_email or "", password=form_password or "")
+    if email is not None or password is not None:
+        return EmailAuthRequest(email=email or "", password=password or "")
 
     raise HTTPException(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
