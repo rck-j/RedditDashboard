@@ -162,19 +162,6 @@ class SessionResponse(BaseModel):
     usage: SessionUsage | None = None
 
 
-class EmailAuthRequest(BaseModel):
-    """Credentials for signing in via email/password."""
-
-    email: EmailStr
-    password: str = Field(min_length=8, max_length=128)
-
-
-class EmailSignupRequest(EmailAuthRequest):
-    """Fields required to create a local account."""
-
-    display_name: str | None = Field(default=None, max_length=255)
-
-
 class PersistedPostReportSchema(BaseModel):
     """Serialized representation of a persisted automation insight."""
 

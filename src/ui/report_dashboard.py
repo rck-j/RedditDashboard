@@ -32,8 +32,6 @@ from src.api.schemas import (
     SearchJobResponse,
     SearchJobStats,
     SearchRequest,
-    EmailAuthRequest,
-    EmailSignupRequest,
     SessionResponse,
     SessionUsage,
     SessionUser,
@@ -257,27 +255,6 @@ def _clear_auth_cookie(response: Response) -> None:
     )
 
 
-def _normalize_email(email: str) -> str:
-    return (email or "").strip().lower()
-
-
-def _derive_password_hash(password: str, salt: str) -> str:
-    secret = password.encode("utf-8")
-    salt_bytes = bytes.fromhex(salt)
-    digest = hashlib.pbkdf2_hmac(
-        PASSWORD_HASH_NAME,
-        secret,
-        salt_bytes,
-        PASSWORD_ITERATIONS,
-    )
-    return digest.hex()
-
-
-def _verify_password(password: str, *, salt: str, expected_hash: str) -> bool:
-    calculated = _derive_password_hash(password, salt)
-    return hmac.compare_digest(calculated, expected_hash)
-
-
 def _unauthorized_error(detail: str = "Authentication required.") -> HTTPException:
     return HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -343,86 +320,6 @@ def _session_usage(user: User) -> SessionUsage:
         active_jobs=active_jobs,
         concurrent_limit=policy.concurrent_job_limit,
     )
-
-
-def _session_payload(request: Request, response: Response, user: User) -> SessionResponse:
-    jwt_token = _create_session_token(user)
-    _set_auth_cookie(response, jwt_token)
-    return SessionResponse(
-        authenticated=True,
-        login_url=str(request.url_for("auth_login_google")),
-        user=_session_user_payload(user),
-        usage=_session_usage(user),
-    )
-
-
-@app.post("/auth/signup", response_model=SessionResponse)
-def auth_signup(
-    request: Request, response: Response, payload: EmailSignupRequest
-) -> SessionResponse:
-    """Register a local account using email/password credentials."""
-
-    normalized_email = _normalize_email(payload.email)
-    if not normalized_email:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=_error_detail("invalid_email", "Email address is required."),
-        )
-    salt = secrets.token_hex(PASSWORD_SALT_BYTES)
-    password_hash = _derive_password_hash(payload.password, salt)
-    display_name = payload.display_name or normalized_email.split("@")[0]
-
-    with get_session() as session:
-        try:
-            user = user_repo.create_local_user(
-                session,
-                email=normalized_email,
-                password_hash=password_hash,
-                password_salt=salt,
-                display_name=display_name,
-            )
-            session.commit()
-            session.refresh(user)
-        except ValueError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=_error_detail("email_exists", str(exc)),
-            ) from exc
-
-    return _session_payload(request, response, user)
-
-
-@app.post("/auth/login/email", response_model=SessionResponse)
-def auth_login_email(
-    request: Request, response: Response, payload: EmailAuthRequest
-) -> SessionResponse:
-    """Authenticate a local user with email/password credentials."""
-
-    normalized_email = _normalize_email(payload.email)
-    with get_session() as session:
-        user = user_repo.get_user_by_email(session, normalized_email)
-        if (
-            user is None
-            or user.auth_provider != AuthProvider.CUSTOM
-            or not user.password_hash
-            or not user.password_salt
-        ):
-            raise _unauthorized_error("Invalid email or password.")
-        if not user.is_active:
-            raise _unauthorized_error("Account is disabled.")
-        if not _verify_password(
-            payload.password,
-            salt=user.password_salt,
-            expected_hash=user.password_hash,
-        ):
-            raise _unauthorized_error("Invalid email or password.")
-
-        user.last_login_at = datetime.now(timezone.utc)
-        session.add(user)
-        session.commit()
-        session.refresh(user)
-
-    return _session_payload(request, response, user)
 
 
 @app.get("/auth/login/google")

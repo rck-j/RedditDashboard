@@ -41,64 +41,6 @@
         gap: 0.75rem;
       }
 
-      .auth-card {
-        background: white;
-        border: 1px solid #e2e8f0;
-        border-radius: 1rem;
-        padding: 1rem;
-        box-shadow: 0 10px 20px rgba(15, 23, 42, 0.08);
-        min-width: 320px;
-        display: flex;
-        flex-direction: column;
-        gap: 0.75rem;
-      }
-
-      .auth-tabs {
-        display: inline-flex;
-        border-radius: 999px;
-        background: #e2e8f0;
-        padding: 0.2rem;
-        gap: 0.35rem;
-      }
-
-      .auth-tabs button {
-        border: none;
-        background: transparent;
-        padding: 0.45rem 0.9rem;
-        border-radius: 999px;
-        font-weight: 700;
-        color: #475569;
-        cursor: pointer;
-      }
-
-      .auth-tabs button.active {
-        background: white;
-        box-shadow: 0 6px 12px rgba(15, 23, 42, 0.08);
-        color: #0f172a;
-      }
-
-      .auth-form {
-        display: flex;
-        flex-direction: column;
-        gap: 0.65rem;
-      }
-
-      .auth-divider {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        color: #94a3b8;
-        font-weight: 600;
-      }
-
-      .auth-divider::before,
-      .auth-divider::after {
-        content: "";
-        flex: 1;
-        height: 1px;
-        background: #e2e8f0;
-      }
-
       .profile-menu {
         display: flex;
         align-items: center;
@@ -758,70 +700,7 @@
           </p>
         </div>
         <div class="session-controls" id="session-controls">
-          <div class="auth-card" id="auth-card">
-            <div class="auth-tabs" role="tablist">
-              <button type="button" data-auth-mode="login" class="active" aria-controls="email-login-form" aria-selected="true">
-                Log in
-              </button>
-              <button type="button" data-auth-mode="signup" aria-controls="email-signup-form" aria-selected="false">
-                Create account
-              </button>
-            </div>
-            <form id="email-login-form" class="auth-form" novalidate role="tabpanel" aria-label="Email login">
-              <div class="form-group">
-                <label for="login-email">Email</label>
-                <input id="login-email" name="email" type="email" autocomplete="email" required />
-              </div>
-              <div class="form-group">
-                <label for="login-password">Password</label>
-                <input id="login-password" name="password" type="password" autocomplete="current-password" required />
-              </div>
-              <button class="btn btn-primary" type="submit" id="login-submit">Log in</button>
-            </form>
-            <form
-              id="email-signup-form"
-              class="auth-form"
-              novalidate
-              role="tabpanel"
-              aria-label="Create account"
-              hidden
-            >
-              <div class="form-group">
-                <label for="signup-name">Name (optional)</label>
-                <input id="signup-name" name="name" type="text" autocomplete="name" />
-              </div>
-              <div class="form-group">
-                <label for="signup-email">Email</label>
-                <input id="signup-email" name="email" type="email" autocomplete="email" required />
-              </div>
-              <div class="form-group">
-                <label for="signup-password">Password</label>
-                <input
-                  id="signup-password"
-                  name="password"
-                  type="password"
-                  minlength="8"
-                  autocomplete="new-password"
-                  required
-                />
-              </div>
-              <div class="form-group">
-                <label for="signup-password-confirm">Confirm password</label>
-                <input
-                  id="signup-password-confirm"
-                  name="password-confirm"
-                  type="password"
-                  minlength="8"
-                  autocomplete="new-password"
-                  required
-                />
-              </div>
-              <button class="btn btn-primary" type="submit" id="signup-submit">Create account</button>
-            </form>
-            <div class="auth-divider" aria-hidden="true">or</div>
-            <a class="btn btn-secondary" id="login-button" href="/auth/login/google">Continue with Google</a>
-            <p id="auth-feedback" class="form-feedback" aria-live="polite"></p>
-          </div>
+          <a class="btn btn-primary" id="login-button" href="/auth/login/google">Continue with Google</a>
           <div class="profile-menu" id="profile-menu" hidden>
             <img id="profile-avatar" class="profile-avatar" alt="Profile" />
             <div class="profile-details">
@@ -1063,7 +942,6 @@
           searchRaw: "",
           automation: "any",
         },
-        authMode: "login",
         session: {
           authenticated: false,
           loginUrl: "/auth/login/google",
@@ -1113,17 +991,6 @@
         refreshHistoryBtn: document.getElementById("refresh-history-btn"),
         activeJobInput: document.getElementById("active-job-id"),
         sessionControls: document.getElementById("session-controls"),
-        authCard: document.getElementById("auth-card"),
-        authTabs: document.querySelectorAll("[data-auth-mode]"),
-        loginForm: document.getElementById("email-login-form"),
-        signupForm: document.getElementById("email-signup-form"),
-        loginEmailInput: document.getElementById("login-email"),
-        loginPasswordInput: document.getElementById("login-password"),
-        signupNameInput: document.getElementById("signup-name"),
-        signupEmailInput: document.getElementById("signup-email"),
-        signupPasswordInput: document.getElementById("signup-password"),
-        signupPasswordConfirmInput: document.getElementById("signup-password-confirm"),
-        authFeedback: document.getElementById("auth-feedback"),
         loginButton: document.getElementById("login-button"),
         profileMenu: document.getElementById("profile-menu"),
         profileName: document.getElementById("profile-name"),
@@ -1588,17 +1455,10 @@
           elements.loginButton.hidden = state.session.authenticated;
           elements.loginButton.href = state.session.loginUrl || elements.loginButton.href;
         }
-        if (elements.authCard) {
-          elements.authCard.hidden = state.session.authenticated;
-        }
         if (elements.profileMenu) {
           elements.profileMenu.hidden = !state.session.authenticated;
         }
         if (!state.session.authenticated) {
-          if (elements.authCard) {
-            setAuthFeedback("Use email/password or Google to sign in.");
-            switchAuthMode(state.authMode || "login");
-          }
           return;
         }
         const user = state.session.user || {};
@@ -1631,7 +1491,7 @@
         }
         if (elements.quotaPlanFootnote) {
           elements.quotaPlanFootnote.textContent = state.session.authenticated
-            ? "Authenticated via Google or email"
+            ? "Authenticated via Google"
             : "Sign in to view your usage.";
         }
         if (!usage) {
@@ -1668,113 +1528,6 @@
         }
       }
 
-      async function handleSessionUpdate(session, { successMessage, unauthenticatedMessage } = {}) {
-        state.session = session;
-        renderSessionControls();
-        renderQuotaPanel();
-        if (!session.authenticated) {
-          handleUnauthenticated(unauthenticatedMessage);
-          return;
-        }
-        applySearchAvailability();
-        if (elements.refreshHistoryBtn) {
-          elements.refreshHistoryBtn.disabled = false;
-        }
-        if (elements.jobHistorySelect) {
-          elements.jobHistorySelect.disabled = false;
-        }
-        if (successMessage) {
-          setAuthFeedback(successMessage, "success");
-        }
-        await loadJobHistory();
-        await loadLatestJob();
-      }
-
-      function bindAuthTabs() {
-        if (!elements.authTabs?.length) return;
-        elements.authTabs.forEach((tab) => {
-          tab.addEventListener("click", () => {
-            switchAuthMode(tab.dataset.authMode || "login");
-          });
-        });
-      }
-
-      async function loginWithEmail(event) {
-        event.preventDefault();
-        setAuthFeedback("");
-        const email = elements.loginEmailInput?.value.trim();
-        const password = elements.loginPasswordInput?.value;
-        if (!email || !password) {
-          setAuthFeedback("Email and password are required.", "error");
-          return;
-        }
-        const submitBtn = elements.loginForm?.querySelector("button[type='submit']");
-        if (submitBtn) submitBtn.disabled = true;
-        try {
-          const session = await fetchJson("/auth/login/email", {
-            method: "POST",
-            body: JSON.stringify({ email, password }),
-          });
-          elements.loginPasswordInput.value = "";
-          await handleSessionUpdate(session, { successMessage: "Signed in." });
-        } catch (error) {
-          console.error(error);
-          setAuthFeedback(error.message || "Unable to sign in.", "error");
-        } finally {
-          if (submitBtn) submitBtn.disabled = false;
-        }
-      }
-
-      async function signupWithEmail(event) {
-        event.preventDefault();
-        setAuthFeedback("");
-        const email = elements.signupEmailInput?.value.trim();
-        const password = elements.signupPasswordInput?.value || "";
-        const confirm = elements.signupPasswordConfirmInput?.value || "";
-        if (!email || !password) {
-          setAuthFeedback("Email and password are required.", "error");
-          return;
-        }
-        if (password.length < 8) {
-          setAuthFeedback("Password must be at least 8 characters.", "error");
-          return;
-        }
-        if (password !== confirm) {
-          setAuthFeedback("Passwords must match.", "error");
-          return;
-        }
-        const submitBtn = elements.signupForm?.querySelector("button[type='submit']");
-        if (submitBtn) submitBtn.disabled = true;
-        const display_name = (elements.signupNameInput?.value || "").trim() || undefined;
-        try {
-          const session = await fetchJson("/auth/signup", {
-            method: "POST",
-            body: JSON.stringify({ email, password, display_name }),
-          });
-          elements.signupPasswordInput.value = "";
-          elements.signupPasswordConfirmInput.value = "";
-          await handleSessionUpdate(session, {
-            successMessage: "Account created and signed in.",
-          });
-        } catch (error) {
-          console.error(error);
-          setAuthFeedback(error.message || "Unable to create account.", "error");
-        } finally {
-          if (submitBtn) submitBtn.disabled = false;
-        }
-      }
-
-      function bindAuthForms() {
-        switchAuthMode(state.authMode);
-        bindAuthTabs();
-        if (elements.loginForm) {
-          elements.loginForm.addEventListener("submit", loginWithEmail);
-        }
-        if (elements.signupForm) {
-          elements.signupForm.addEventListener("submit", signupWithEmail);
-        }
-      }
-
       function applySearchAvailability() {
         const reason = quotaBlockReason();
         toggleSearchForm(Boolean(reason), reason || "");
@@ -1786,8 +1539,6 @@
         state.session.user = null;
         state.session.usage = null;
         renderSessionControls();
-        setAuthFeedback(message, "info");
-        switchAuthMode("login");
         renderQuotaPanel();
         toggleSearchForm(true, message);
         setJobStatusMessage(message);
@@ -2659,9 +2410,22 @@
       async function loadSession() {
         try {
           const session = await fetchJson("/api/session");
-          await handleSessionUpdate(session, {
-            unauthenticatedMessage: "Sign in to run your first search.",
-          });
+          state.session = session;
+          renderSessionControls();
+          renderQuotaPanel();
+          if (elements.refreshHistoryBtn) {
+            elements.refreshHistoryBtn.disabled = !session.authenticated;
+          }
+          if (!session.authenticated) {
+            handleUnauthenticated("Sign in with Google to run your first search.");
+            return;
+          }
+          applySearchAvailability();
+          if (elements.jobHistorySelect) {
+            elements.jobHistorySelect.disabled = false;
+          }
+          await loadJobHistory();
+          await loadLatestJob();
         } catch (error) {
           console.error(error);
           setJobStatusMessage("Unable to load your session state.");
