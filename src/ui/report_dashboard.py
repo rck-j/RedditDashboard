@@ -244,10 +244,18 @@ def _create_session_token(user: User) -> str:
     if user.id is None:
         raise RuntimeError("User must be persisted before creating a session token")
 
+    provider = user.auth_provider
+    if isinstance(provider, str):
+        try:
+            provider = AuthProvider(provider)
+        except ValueError:
+            # Persist whatever value we have to avoid blocking login flows.
+            pass
+
     expires_at = datetime.now(timezone.utc) + timedelta(seconds=AUTH_TOKEN_TTL_SECONDS)
     payload = {
         "sub": str(user.id),
-        "provider": user.auth_provider.value,
+        "provider": provider.value if isinstance(provider, AuthProvider) else str(provider),
         "email": user.email,
         "name": user.display_name,
         "exp": int(expires_at.timestamp()),
