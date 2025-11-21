@@ -334,16 +334,20 @@ def create_search(
         log_structured("search_cached", user_id=current_user.id, query=search_request.query)
         return cache_hit
 
-    with get_session() as session:
-        try:
-            job = create_search_job(session, search_request, user_id=current_user.id)
-            session.commit()
-        except SQLAlchemyError as exc:  # pragma: no cover - depends on DB availability
-            session.rollback()
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail=error_detail("job_creation_failed", "Unable to queue your search request."),
-            ) from exc
+    try:
+        job = create_search_job(
+            user_id=current_user.id,
+            query=search_request.query,
+            subreddits=search_request.subreddits,
+            time_filter=search_request.time_filter,
+            limit=search_request.limit,
+            comments_limit=search_request.comments_limit,
+        )
+    except SQLAlchemyError as exc:  # pragma: no cover - depends on DB availability
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=error_detail("job_creation_failed", "Unable to queue your search request."),
+        ) from exc
 
     set_queue_depth(queue)
     queue.enqueue(search_runner.run_search_job, job.id, job.user_id)
