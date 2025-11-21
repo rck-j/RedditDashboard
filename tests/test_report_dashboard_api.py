@@ -643,6 +643,36 @@ def test_auth_login_handles_db_errors(api_client, monkeypatch):
     assert response.json()["detail"]["code"] == "login_failed"
 
 
+def test_auth_login_accepts_form_payload(api_client):
+    client, _, _ = api_client
+
+    password = "password123"
+    salt = report_dashboard._generate_password_salt()
+    password_hash = report_dashboard._hash_password(password, salt_hex=salt)
+    email = "formuser@example.com"
+
+    with db_session.get_session() as session:
+        user_repo.create_local_user(
+            session,
+            email=email,
+            password_hash=password_hash,
+            password_salt=salt,
+            display_name="Form User",
+        )
+        session.commit()
+
+    response = client.post(
+        "/auth/login",
+        data={"email": email, "password": password},
+        allow_redirects=False,
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    payload = response.json()
+    assert payload["authenticated"] is True
+    assert report_dashboard.AUTH_COOKIE_NAME in response.cookies
+
+
 def test_create_session_token_allows_string_provider() -> None:
     user = User(
         id=1,
