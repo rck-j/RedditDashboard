@@ -386,6 +386,14 @@ def _session_usage(user: User) -> SessionUsage:
     )
 
 
+def _wants_html_response(request: Request) -> bool:
+    """Detect whether the client expects an HTML navigation flow."""
+
+    accept_header = (request.headers.get("accept") or "").lower()
+    content_type = (request.headers.get("content-type") or "").lower()
+    return "text/html" in accept_header or "application/x-www-form-urlencoded" in content_type
+
+
 def _session_response(request: Request, user: User | None) -> SessionResponse:
     login_url = str(request.url_for("auth_login_google"))
     if user is None:
@@ -421,15 +429,33 @@ async def auth_login_google(request: Request) -> Response:
 
 @app.post("/auth/signup", response_model=SessionResponse)
 def auth_signup(
-    payload: EmailSignupRequest,
+    payload: EmailSignupRequest | None = Body(None),
+    display_name: str | None = Form(None),
+    email: str | None = Form(None),
+    password: str | None = Form(None),
     request: Request,
     response: Response,
     _: None = Depends(enforce_rate_limit),
 ) -> SessionResponse:
     """Create a local email/password account and issue a session cookie."""
 
-    email = _normalize_email(payload.email)
-    if not email:
+    if payload is None:
+        if email is None or password is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=_error_detail(
+                    "invalid_signup_payload",
+                    "Email and password are required to create an account.",
+                ),
+            )
+        payload = EmailSignupRequest(
+            email=email,
+            password=password,
+            display_name=display_name,
+        )
+
+    normalized_email = _normalize_email(payload.email)
+    if not normalized_email:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=_error_detail("invalid_email", "Email is required.", field="email"),
@@ -438,13 +464,13 @@ def auth_signup(
 
     salt_hex = _generate_password_salt()
     password_hash = _hash_password(payload.password, salt_hex=salt_hex)
-    display_name = payload.display_name or email
+    display_name = payload.display_name or normalized_email
 
     with get_session() as session:
         try:
             user = user_repo.create_local_user(
                 session,
-                email=email,
+                email=normalized_email,
                 password_hash=password_hash,
                 password_salt=salt_hex,
                 display_name=display_name,
@@ -473,6 +499,11 @@ def auth_signup(
             ) from exc
 
     jwt_token = _create_session_token(user)
+    if _wants_html_response(request):
+        redirect = RedirectResponse(url="/dashboard", status_code=status.HTTP_303_SEE_OTHER)
+        _set_auth_cookie(redirect, jwt_token)
+        return redirect
+
     _set_auth_cookie(response, jwt_token)
     return _session_response(request, user)
 
@@ -518,6 +549,11 @@ def auth_login(
             ) from exc
 
     jwt_token = _create_session_token(user)
+    if _wants_html_response(request):
+        redirect = RedirectResponse(url="/dashboard", status_code=status.HTTP_303_SEE_OTHER)
+        _set_auth_cookie(redirect, jwt_token)
+        return redirect
+
     _set_auth_cookie(response, jwt_token)
     return _session_response(request, user)
 
