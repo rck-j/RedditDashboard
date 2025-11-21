@@ -455,17 +455,28 @@ def auth_login(
         )
 
     with get_session() as session:
-        user = user_repo.verify_user_credentials(
-            session,
-            email=email,
-            password=payload.password,
-            hash_name=PASSWORD_HASH_NAME,
-            iterations=PASSWORD_ITERATIONS,
-        )
-        if user is None:
-            raise _unauthorized_error("Invalid email or password.")
-        session.commit()
-        session.refresh(user)
+        try:
+            user = user_repo.verify_user_credentials(
+                session,
+                email=email,
+                password=payload.password,
+                hash_name=PASSWORD_HASH_NAME,
+                iterations=PASSWORD_ITERATIONS,
+            )
+            if user is None:
+                raise _unauthorized_error("Invalid email or password.")
+            session.commit()
+            session.refresh(user)
+        except SQLAlchemyError as exc:  # pragma: no cover - depends on DB availability
+            session.rollback()
+            logger.exception("login_db_error")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=_error_detail(
+                    "login_failed",
+                    "Unable to sign you in right now. Please try again later.",
+                ),
+            ) from exc
 
     jwt_token = _create_session_token(user)
     _set_auth_cookie(response, jwt_token)
