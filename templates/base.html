@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{% block title %}Reddit Automation{% endblock %}</title>
+    <style>
+      :root {
+        color-scheme: only light;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background-color: #f1f5f9;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: radial-gradient(circle at top left, rgba(59, 130, 246, 0.08), transparent 55%),
+          #f8fafc;
+        color: #0f172a;
+      }
+
+      header.site-header {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        background: rgba(248, 250, 252, 0.95);
+        backdrop-filter: blur(8px);
+        border-bottom: 1px solid #e2e8f0;
+      }
+
+      .site-header-inner {
+        max-width: 1200px;
+        margin: 0 auto;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 1rem 1.5rem;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 0.65rem;
+        font-weight: 800;
+        font-size: 1.2rem;
+        color: #0f172a;
+        text-decoration: none;
+      }
+
+      .brand-badge {
+        width: 36px;
+        height: 36px;
+        border-radius: 12px;
+        background: linear-gradient(135deg, #2563eb, #38bdf8);
+        display: grid;
+        place-items: center;
+        color: white;
+        font-weight: 900;
+      }
+
+      nav.primary-nav {
+        display: flex;
+        gap: 0.4rem;
+      }
+
+      .nav-link {
+        text-decoration: none;
+        color: #475569;
+        padding: 0.55rem 0.9rem;
+        border-radius: 999px;
+        font-weight: 600;
+        transition: all 0.2s ease;
+      }
+
+      .nav-link:hover,
+      .nav-link[aria-current="page"] {
+        background: #2563eb;
+        color: white;
+        box-shadow: 0 10px 24px rgba(37, 99, 235, 0.18);
+      }
+
+      main.page {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 2rem 1.5rem 3rem;
+        display: flex;
+        flex-direction: column;
+        gap: 1.25rem;
+      }
+
+      h1,
+      h2,
+      h3 {
+        margin: 0 0 0.35rem;
+        color: #0f172a;
+      }
+
+      p {
+        margin: 0 0 0.75rem;
+        color: #475569;
+        line-height: 1.5;
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.35rem 0.8rem;
+        border-radius: 999px;
+        background: #eef2ff;
+        color: #312e81;
+        font-weight: 700;
+      }
+
+      .card-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 1rem;
+      }
+
+      .card {
+        background: white;
+        border: 1px solid #e2e8f0;
+        border-radius: 1rem;
+        padding: 1rem 1.1rem;
+        box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+
+      .panel {
+        background: white;
+        border: 1px solid #e2e8f0;
+        border-radius: 1rem;
+        padding: 1.25rem 1.35rem;
+        box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+      }
+
+      .btn {
+        border: none;
+        border-radius: 999px;
+        padding: 0.75rem 1.3rem;
+        font-weight: 700;
+        cursor: pointer;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.35rem;
+      }
+
+      .btn-primary {
+        background: linear-gradient(135deg, #2563eb, #3b82f6);
+        color: white;
+        box-shadow: 0 10px 20px rgba(37, 99, 235, 0.3);
+      }
+
+      .btn-secondary {
+        background: #e2e8f0;
+        color: #1e293b;
+      }
+
+      form.form-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 1rem;
+      }
+
+      label {
+        font-weight: 700;
+        color: #0f172a;
+      }
+
+      input,
+      select,
+      textarea {
+        width: 100%;
+        border-radius: 0.75rem;
+        border: 1px solid #cbd5f5;
+        padding: 0.65rem 0.8rem;
+        font-size: 1rem;
+        font-family: inherit;
+        background: #f8fafc;
+      }
+
+      .stack {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+      }
+
+      .split {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 1rem;
+      }
+
+      .taglist {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        padding: 0;
+        list-style: none;
+        margin: 0;
+      }
+
+      .tag {
+        padding: 0.35rem 0.75rem;
+        border-radius: 999px;
+        background: #e0f2fe;
+        color: #0c4a6e;
+        font-weight: 700;
+      }
+    </style>
+    {% block head %}{% endblock %}
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="site-header-inner">
+        <a class="brand" href="/">
+          <span class="brand-badge">R</span>
+          Reddit Automation
+        </a>
+        <nav class="primary-nav">
+          <a class="nav-link" href="/" aria-current="{{ 'page' if current_path == '/' else 'false' }}">Landing</a>
+          <a class="nav-link" href="/auth" aria-current="{{ 'page' if current_path == '/auth' else 'false' }}">Login</a>
+          <a class="nav-link" href="/plans" aria-current="{{ 'page' if current_path == '/plans' else 'false' }}">Choose Plan</a>
+          <a class="nav-link" href="/dashboard" aria-current="{{ 'page' if current_path == '/dashboard' else 'false' }}">Dashboard</a>
+          <a class="nav-link" href="/preferences" aria-current="{{ 'page' if current_path == '/preferences' else 'false' }}">Preferences</a>
+        </nav>
+      </div>
+    </header>
+    <main class="page">
+      {% block content %}{% endblock %}
+    </main>
+  </body>
+</html>

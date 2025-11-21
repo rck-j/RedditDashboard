@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Reddit Automation | Preferences{% endblock %}
+{% block content %}
+<section class="panel stack">
+  <span class="pill">Preferences</span>
+  <h1>Tailor the dashboard to your workflow</h1>
+  <p>Adjust notification settings, choose default search options, and set data hygiene rules.</p>
+  <div class="split">
+    <div class="card stack">
+      <h3>Notifications</h3>
+      <form class="stack">
+        <label for="notify-email">Email for alerts</label>
+        <input id="notify-email" name="notify_email" type="email" placeholder="alerts@example.com" />
+        <label>
+          <input type="checkbox" name="job_status_updates" />
+          Send job status updates
+        </label>
+        <label>
+          <input type="checkbox" name="weekly_summary" />
+          Send weekly automation summary
+        </label>
+        <button class="btn btn-secondary" type="button">Save notifications</button>
+      </form>
+    </div>
+    <div class="card stack">
+      <h3>Defaults</h3>
+      <form class="stack">
+        <label for="default-subs">Default subreddits</label>
+        <input id="default-subs" name="default_subs" type="text" placeholder="automation, devops" />
+        <label for="default-limit">Default comments limit</label>
+        <select id="default-limit" name="default_limit">
+          <option value="3">3</option>
+          <option value="10">10</option>
+          <option value="25">25</option>
+        </select>
+        <button class="btn btn-secondary" type="button">Save defaults</button>
+      </form>
+    </div>
+  </div>
+  <div class="panel stack">
+    <h3>Data retention</h3>
+    <p>Control how long reports stay visible based on your plan.</p>
+    <div class="split">
+      <div class="card">
+        <strong>Retention window</strong>
+        <p>Aligns with the selected subscription plan from the plans page.</p>
+      </div>
+      <div class="card">
+        <strong>Cleanup cadence</strong>
+        <p>Expired jobs are purged automatically by the background cleanup loop.</p>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}

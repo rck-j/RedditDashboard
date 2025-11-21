@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Reddit Automation | Login{% endblock %}
+{% block content %}
+<section class="panel stack">
+  <span class="pill">Authentication</span>
+  <h1>Sign in or create your RedDash account</h1>
+  <p>
+    Continue with Google OAuth or create a password-based account to track searches, plans,
+    and preferences across sessions.
+  </p>
+  <div class="split">
+    <div class="card stack">
+      <h3>Login</h3>
+      <form class="stack" method="post" action="/auth/login">
+        <label for="login-email">Email</label>
+        <input id="login-email" name="email" type="email" placeholder="you@example.com" required />
+        <label for="login-password">Password</label>
+        <input id="login-password" name="password" type="password" placeholder="••••••••" required />
+        <button class="btn btn-primary" type="submit">Sign in</button>
+      </form>
+    </div>
+    <div class="card stack">
+      <h3>Create an account</h3>
+      <form class="stack" method="post" action="/auth/signup">
+        <label for="signup-name">Display name</label>
+        <input id="signup-name" name="display_name" type="text" placeholder="Analyst" />
+        <label for="signup-email">Email</label>
+        <input id="signup-email" name="email" type="email" placeholder="you@example.com" required />
+        <label for="signup-password">Password</label>
+        <input id="signup-password" name="password" type="password" placeholder="Minimum 8 characters" required />
+        <button class="btn btn-secondary" type="submit">Create account</button>
+      </form>
+    </div>
+  </div>
+  <div class="panel stack">
+    <h3>Prefer SSO?</h3>
+    <p>Authenticate with Google to skip passwords and reuse your existing profile.</p>
+    <a class="btn btn-primary" href="/auth/login/google">Continue with Google</a>
+  </div>
+</section>
+{% endblock %}

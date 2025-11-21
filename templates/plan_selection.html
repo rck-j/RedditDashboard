@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Reddit Automation | Plans{% endblock %}
+{% block content %}
+<section class="panel stack">
+  <span class="pill">Plans</span>
+  <h1>Choose the right retention and throughput</h1>
+  <p>
+    Plans map directly to dashboard limits such as daily job caps, concurrent searches, and
+    data retention windows. Switch plans anytime and the dashboard will automatically honor
+    the new policy.
+  </p>
+  <div class="card-grid">
+    <div class="card">
+      <h3>Starter</h3>
+      <p>Great for experimenting with a handful of keywords.</p>
+      <ul class="taglist">
+        <li class="tag">Daily limit: 10 jobs</li>
+        <li class="tag">Retention: 7 days</li>
+        <li class="tag">Support: Community</li>
+      </ul>
+      <button class="btn btn-primary" type="button">Select Starter</button>
+    </div>
+    <div class="card">
+      <h3>Growth</h3>
+      <p>Balance throughput with longer retention for weekly reporting.</p>
+      <ul class="taglist">
+        <li class="tag">Daily limit: 50 jobs</li>
+        <li class="tag">Retention: 30 days</li>
+        <li class="tag">Support: Email</li>
+      </ul>
+      <button class="btn btn-primary" type="button">Select Growth</button>
+    </div>
+    <div class="card">
+      <h3>Scale</h3>
+      <p>Full concurrency, bulk research, and quarterly archives.</p>
+      <ul class="taglist">
+        <li class="tag">Daily limit: 200 jobs</li>
+        <li class="tag">Retention: 90 days</li>
+        <li class="tag">Support: Priority</li>
+      </ul>
+      <button class="btn btn-primary" type="button">Select Scale</button>
+    </div>
+  </div>
+  <div class="panel stack">
+    <h3>Already subscribed?</h3>
+    <p>Head back to the dashboard to see usage and create more jobs.</p>
+    <a class="btn btn-secondary" href="/dashboard">Return to dashboard</a>
+  </div>
+</section>
+{% endblock %}

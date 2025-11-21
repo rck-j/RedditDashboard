@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Reddit Automation | Landing{% endblock %}
+{% block content %}
+<section class="panel stack">
+  <span class="pill">Launch</span>
+  <h1>Scale your Reddit research with automation</h1>
+  <p>
+    RedDash combines Reddit search jobs, AI summarization, and human-friendly dashboards so
+    you can spot automation opportunities faster. Start with a quick tour or jump straight
+    to the dashboard to see the latest reports.
+  </p>
+  <div class="split">
+    <div class="card">
+      <h3>Step 1 · Create your workspace</h3>
+      <p>Sign in with Google or email to sync your saved searches and preferences.</p>
+      <a class="btn btn-primary" href="/auth">Sign in or create an account</a>
+    </div>
+    <div class="card">
+      <h3>Step 2 · Pick the right plan</h3>
+      <p>Choose a retention window, daily job quota, and concurrency that matches your team.</p>
+      <a class="btn btn-secondary" href="/plans">Review plans</a>
+    </div>
+    <div class="card">
+      <h3>Step 3 · Explore the dashboard</h3>
+      <p>
+        Launch searches across your favorite subreddits, watch job progress, and read AI
+        summaries of each thread.
+      </p>
+      <a class="btn btn-primary" href="/dashboard">Open dashboard</a>
+    </div>
+  </div>
+</section>
+<section class="split">
+  <div class="panel">
+    <h2>What you get</h2>
+    <ul class="taglist">
+      <li class="tag">Search orchestration</li>
+      <li class="tag">AI-powered insights</li>
+      <li class="tag">Plan-aware limits</li>
+      <li class="tag">User preferences</li>
+      <li class="tag">Prometheus metrics</li>
+    </ul>
+    <p>
+      Each page in the app focuses on one part of the journey so you can land, login, select
+      a plan, operate the dashboard, and fine-tune your preferences without losing context.
+    </p>
+  </div>
+  <div class="panel stack">
+    <h2>Ready to get started?</h2>
+    <p>Head to the login page to spin up your first session, or preview the dashboard shell.</p>
+    <div class="split">
+      <a class="btn btn-primary" href="/auth">Go to login</a>
+      <a class="btn btn-secondary" href="/dashboard">Peek at the dashboard</a>
+    </div>
+  </div>
+</section>
+{% endblock %}
