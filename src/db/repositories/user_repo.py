@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Iterable, Optional
+
+import hashlib
+import hmac
 
 from sqlmodel import Session, select
 
@@ -16,6 +18,40 @@ class UserNotFoundError(RuntimeError):
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def derive_password_hash(
+    password: str, *, salt_hex: str, hash_name: str, iterations: int
+) -> str:
+    """Compute a PBKDF2-derived password hash using the stored salt."""
+
+    salt = bytes.fromhex(salt_hex)
+    digest = hashlib.pbkdf2_hmac(
+        hash_name,
+        password.encode("utf-8"),
+        salt,
+        iterations,
+    )
+    return digest.hex()
+
+
+def verify_password_hash(
+    password: str,
+    *,
+    salt_hex: str,
+    expected_hash: str,
+    hash_name: str,
+    iterations: int,
+) -> bool:
+    """Compare the provided password to a stored hash using constant time checks."""
+
+    derived = derive_password_hash(
+        password,
+        salt_hex=salt_hex,
+        hash_name=hash_name,
+        iterations=iterations,
+    )
+    return hmac.compare_digest(derived, expected_hash)
 
 
 def get_user_by_id(session: Session, user_id: int) -> User | None:
@@ -73,6 +109,37 @@ def create_local_user(
         is_active=is_active,
         last_login_at=_utcnow(),
     )
+    session.add(user)
+    session.flush()
+    return user
+
+
+def verify_user_credentials(
+    session: Session,
+    *,
+    email: str,
+    password: str,
+    hash_name: str,
+    iterations: int,
+) -> User | None:
+    """Verify an email/password pair and return the user if valid."""
+
+    user = get_user_by_email(session, email)
+    if user is None:
+        return None
+    if user.auth_provider != AuthProvider.CUSTOM:
+        return None
+    if not user.is_active or not user.password_hash or not user.password_salt:
+        return None
+    if not verify_password_hash(
+        password,
+        salt_hex=user.password_salt,
+        expected_hash=user.password_hash,
+        hash_name=hash_name,
+        iterations=iterations,
+    ):
+        return None
+    user.last_login_at = _utcnow()
     session.add(user)
     session.flush()
     return user
@@ -175,5 +242,8 @@ __all__ = [
     "get_user_by_email",
     "get_user_by_id",
     "get_user_by_provider_identity",
+    "derive_password_hash",
+    "verify_password_hash",
+    "verify_user_credentials",
     "upsert_user_from_identity",
 ]

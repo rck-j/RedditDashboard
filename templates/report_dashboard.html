@@ -78,6 +78,74 @@
         font-weight: 700;
       }
 
+      .auth-panel {
+        background: white;
+        border: 1px solid #e2e8f0;
+        border-radius: 1rem;
+        padding: 1.25rem;
+        box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+        margin-bottom: 1.25rem;
+      }
+
+      .auth-tabs {
+        display: inline-flex;
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 999px;
+        padding: 0.25rem;
+        gap: 0.25rem;
+        margin: 0 0 1rem;
+      }
+
+      .auth-tab {
+        border: none;
+        background: transparent;
+        padding: 0.5rem 1rem;
+        border-radius: 999px;
+        font-weight: 700;
+        color: #475569;
+        cursor: pointer;
+      }
+
+      .auth-tab.active {
+        background: #2563eb;
+        color: white;
+        box-shadow: 0 10px 20px rgba(37, 99, 235, 0.25);
+      }
+
+      .auth-forms {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 1rem;
+        align-items: start;
+      }
+
+      .auth-form {
+        display: flex;
+        flex-direction: column;
+        gap: 0.65rem;
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 0.75rem;
+        padding: 1rem;
+      }
+
+      .auth-divider {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        color: #94a3b8;
+        font-weight: 700;
+      }
+
+      .auth-divider::before,
+      .auth-divider::after {
+        content: "";
+        flex: 1;
+        height: 1px;
+        background: #e2e8f0;
+      }
+
       .onboarding-card {
         background: #e0f2fe;
         border: 1px solid #bae6fd;
@@ -712,6 +780,94 @@
         </div>
       </header>
 
+      <section class="auth-panel" id="auth-panel">
+        <div class="panel-heading">
+          <h2 id="auth-panel-title">Sign in to run searches</h2>
+          <p>Use email + password or continue with Google to launch and track jobs.</p>
+        </div>
+        <div class="auth-tabs" role="tablist" aria-label="Authentication mode">
+          <button
+            type="button"
+            class="auth-tab active"
+            data-auth-mode="login"
+            aria-controls="login-form"
+            aria-selected="true"
+            role="tab"
+          >
+            Log in
+          </button>
+          <button
+            type="button"
+            class="auth-tab"
+            data-auth-mode="signup"
+            aria-controls="signup-form"
+            aria-selected="false"
+            role="tab"
+          >
+            Create account
+          </button>
+        </div>
+        <div class="auth-forms">
+          <form id="login-form" class="auth-form" role="tabpanel" aria-labelledby="auth-panel-title">
+            <div class="form-group">
+              <label for="login-email">Email</label>
+              <input id="login-email" name="email" type="email" autocomplete="email" required />
+            </div>
+            <div class="form-group">
+              <label for="login-password">Password</label>
+              <input
+                id="login-password"
+                name="password"
+                type="password"
+                autocomplete="current-password"
+                required
+              />
+            </div>
+            <button type="submit" class="btn btn-primary">Log in</button>
+          </form>
+          <form
+            id="signup-form"
+            class="auth-form"
+            role="tabpanel"
+            aria-labelledby="auth-panel-title"
+            hidden
+          >
+            <div class="form-group">
+              <label for="signup-email">Email</label>
+              <input id="signup-email" name="email" type="email" autocomplete="email" required />
+            </div>
+            <div class="form-group">
+              <label for="signup-display-name">Display name</label>
+              <input
+                id="signup-display-name"
+                name="display_name"
+                type="text"
+                autocomplete="name"
+                placeholder="How you'll appear in the app"
+              />
+            </div>
+            <div class="form-group">
+              <label for="signup-password">Password</label>
+              <input
+                id="signup-password"
+                name="password"
+                type="password"
+                autocomplete="new-password"
+                required
+              />
+            </div>
+            <button type="submit" class="btn btn-primary">Create account</button>
+          </form>
+          <div class="auth-form" aria-live="polite" aria-atomic="true">
+            <p id="auth-form-feedback" class="form-feedback" role="status"></p>
+            <div class="auth-divider"><span>or</span></div>
+            <a class="btn btn-secondary" id="google-login-link" href="/auth/login/google"
+              >Continue with Google</a
+            >
+          </div>
+        </div>
+      </section>
+
       <section class="search-panel" aria-labelledby="search-panel-title">
         <div class="panel-heading">
           <h2 id="search-panel-title">Launch a new search</h2>
@@ -942,6 +1098,7 @@
           searchRaw: "",
           automation: "any",
         },
+        authMode: "login",
         session: {
           authenticated: false,
           loginUrl: "/auth/login/google",
@@ -993,6 +1150,17 @@
         sessionControls: document.getElementById("session-controls"),
         loginButton: document.getElementById("login-button"),
         profileMenu: document.getElementById("profile-menu"),
+        authPanel: document.getElementById("auth-panel"),
+        authTabs: document.querySelectorAll("[data-auth-mode]") || [],
+        loginForm: document.getElementById("login-form"),
+        signupForm: document.getElementById("signup-form"),
+        authFeedback: document.getElementById("auth-form-feedback"),
+        loginEmail: document.getElementById("login-email"),
+        loginPassword: document.getElementById("login-password"),
+        signupEmail: document.getElementById("signup-email"),
+        signupPassword: document.getElementById("signup-password"),
+        signupDisplayName: document.getElementById("signup-display-name"),
+        googleLoginLink: document.getElementById("google-login-link"),
         profileName: document.getElementById("profile-name"),
         profilePlan: document.getElementById("profile-plan"),
         profileAvatar: document.getElementById("profile-avatar"),
@@ -1375,6 +1543,33 @@
         }
       }
 
+      async function handleEmailAuth(endpoint, payload, successMessage = "Signed in!") {
+        if (!payload.email || !payload.password) {
+          setAuthFeedback("Enter your email and password.", "error");
+          return;
+        }
+        setAuthFeedback("Processing…");
+        try {
+          const session = await fetchJson(endpoint, {
+            method: "POST",
+            body: JSON.stringify(payload),
+          });
+          const authenticated = applySession(session);
+          if (!authenticated) {
+            setAuthFeedback("Unable to start a session.", "error");
+            return;
+          }
+          setAuthFeedback(successMessage, "success");
+          await loadJobHistory();
+          await loadLatestJob();
+        } catch (error) {
+          if (error.status === 401) {
+            handleUnauthenticated(error.message || "Invalid credentials.");
+          }
+          setAuthFeedback(error.message || "Unable to complete the request.", "error");
+        }
+      }
+
       async function fetchJson(url, options = {}) {
         const config = { ...options };
         const headers = {
@@ -1455,8 +1650,14 @@
           elements.loginButton.hidden = state.session.authenticated;
           elements.loginButton.href = state.session.loginUrl || elements.loginButton.href;
         }
+        if (elements.googleLoginLink) {
+          elements.googleLoginLink.href = state.session.loginUrl || elements.googleLoginLink.href;
+        }
         if (elements.profileMenu) {
           elements.profileMenu.hidden = !state.session.authenticated;
+        }
+        if (elements.authPanel) {
+          elements.authPanel.hidden = state.session.authenticated;
         }
         if (!state.session.authenticated) {
           return;
@@ -1491,7 +1692,7 @@
         }
         if (elements.quotaPlanFootnote) {
           elements.quotaPlanFootnote.textContent = state.session.authenticated
-            ? "Authenticated via Google"
+            ? "Authenticated session"
             : "Sign in to view your usage.";
         }
         if (!usage) {
@@ -1534,10 +1735,32 @@
         return reason;
       }
 
+      function applySession(session) {
+        state.session = session;
+        renderSessionControls();
+        renderQuotaPanel();
+        if (elements.refreshHistoryBtn) {
+          elements.refreshHistoryBtn.disabled = !session.authenticated;
+        }
+        if (!session.authenticated) {
+          handleUnauthenticated("Sign in to launch searches.");
+          return false;
+        }
+        if (elements.jobHistorySelect) {
+          elements.jobHistorySelect.disabled = false;
+        }
+        applySearchAvailability();
+        return true;
+      }
+
       function handleUnauthenticated(message = "Sign in to launch a search.") {
         state.session.authenticated = false;
         state.session.user = null;
         state.session.usage = null;
+        switchAuthMode("login");
+        setAuthFeedback("");
+        if (elements.loginForm) elements.loginForm.reset();
+        if (elements.signupForm) elements.signupForm.reset();
         renderSessionControls();
         renderQuotaPanel();
         toggleSearchForm(true, message);
@@ -1569,6 +1792,37 @@
           option.selected = selectedValues.includes(value);
           select.appendChild(option);
         });
+      }
+
+      function bindAuthForms() {
+        if (elements.authTabs?.length) {
+          elements.authTabs.forEach((tab) => {
+            tab.addEventListener("click", () => switchAuthMode(tab.dataset.authMode));
+          });
+        }
+        if (elements.loginForm) {
+          elements.loginForm.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            await handleEmailAuth("/auth/login", {
+              email: elements.loginEmail?.value?.trim(),
+              password: elements.loginPassword?.value || "",
+            });
+          });
+        }
+        if (elements.signupForm) {
+          elements.signupForm.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            await handleEmailAuth(
+              "/auth/signup",
+              {
+                email: elements.signupEmail?.value?.trim(),
+                password: elements.signupPassword?.value || "",
+                display_name: elements.signupDisplayName?.value?.trim() || undefined,
+              },
+              "Account created!",
+            );
+          });
+        }
       }
 
       function bindSubredditAdder() {
@@ -2410,19 +2664,9 @@
       async function loadSession() {
         try {
           const session = await fetchJson("/api/session");
-          state.session = session;
-          renderSessionControls();
-          renderQuotaPanel();
-          if (elements.refreshHistoryBtn) {
-            elements.refreshHistoryBtn.disabled = !session.authenticated;
-          }
-          if (!session.authenticated) {
-            handleUnauthenticated("Sign in with Google to run your first search.");
+          const authenticated = applySession(session);
+          if (!authenticated) {
             return;
-          }
-          applySearchAvailability();
-          if (elements.jobHistorySelect) {
-            elements.jobHistorySelect.disabled = false;
           }
           await loadJobHistory();
           await loadLatestJob();
