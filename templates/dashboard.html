@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Reddit Automation | Dashboard{% endblock %}
+{% block content %}
+<section class="panel stack">
+  <span class="pill">Dashboard</span>
+  <h1>Run Reddit search jobs</h1>
+  <p>
+    Launch new searches, monitor active jobs, and review automation insights pulled from your
+    latest reports.
+  </p>
+  <form class="form-grid" method="post" action="/api/searches">
+    <div class="stack">
+      <label for="query">Search query</label>
+      <input id="query" name="query" type="text" placeholder="automation AND ops" required />
+    </div>
+    <div class="stack">
+      <label for="subs">Subreddits (comma separated)</label>
+      <input id="subs" name="subreddits" type="text" placeholder="smallbusiness, entrepreneur" />
+    </div>
+    <div class="stack">
+      <label for="comment-limit">Comments to fetch</label>
+      <select id="comment-limit" name="comments_limit">
+        <option value="3">3</option>
+        <option value="10">10</option>
+        <option value="25">25</option>
+      </select>
+    </div>
+    <div class="stack">
+      <label for="report-path">Report path</label>
+      <input id="report-path" name="report_path" type="text" placeholder="data/report.json" />
+    </div>
+    <button class="btn btn-primary" type="submit">Start search</button>
+  </form>
+</section>
+<section class="split">
+  <div class="panel stack">
+    <h2>Usage</h2>
+    <p>Track how today’s activity aligns with your plan.</p>
+    <ul class="taglist">
+      <li class="tag">Daily limit respected</li>
+      <li class="tag">Concurrent jobs enforced</li>
+      <li class="tag">Retention cleanups scheduled</li>
+    </ul>
+  </div>
+  <div class="panel stack">
+    <h2>Active jobs</h2>
+    <p>Queued and running searches will appear here along with their statuses.</p>
+    <div class="card">
+      <strong>Job timeline</strong>
+      <p>Use the API responses to populate this section with live data.</p>
+    </div>
+  </div>
+</section>
+<section class="panel stack">
+  <h2>Recent reports</h2>
+  <p>Review automation summaries from the most recent completed jobs.</p>
+  <div class="card-grid">
+    <div class="card">
+      <h3>Automation complexity</h3>
+      <p>Summaries and insights can be rendered here using data from <code>/api/reports</code>.</p>
+    </div>
+    <div class="card">
+      <h3>Top tools</h3>
+      <p>List the tools most frequently recommended across reports.</p>
+    </div>
+    <div class="card">
+      <h3>Opportunities</h3>
+      <p>Show cases where automation is likely or flagged as high impact.</p>
+    </div>
+  </div>
+</section>
+{% endblock %}

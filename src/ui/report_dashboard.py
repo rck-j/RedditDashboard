@@ -1022,14 +1022,48 @@ def delete_search(
         session.commit()
 
 
-@app.get("/", response_class=HTMLResponse)
-def render_dashboard(request: Request) -> HTMLResponse:
-    """Render the dashboard shell; client fetches data via HTMX."""
+def _page_response(request: Request, template_name: str) -> HTMLResponse:
+    """Render a Jinja template with navigation context."""
 
     return TEMPLATES.TemplateResponse(
-        "report_dashboard.html",
-        {"request": request},
+        template_name,
+        {"request": request, "current_path": request.url.path},
     )
+
+
+@app.get("/", response_class=HTMLResponse)
+def render_landing(request: Request) -> HTMLResponse:
+    """Landing page that introduces the multipage dashboard."""
+
+    return _page_response(request, "landing.html")
+
+
+@app.get("/auth", response_class=HTMLResponse)
+def render_auth(request: Request) -> HTMLResponse:
+    """Login and signup experience for RedDash."""
+
+    return _page_response(request, "auth.html")
+
+
+@app.get("/plans", response_class=HTMLResponse)
+def render_plan_selection(request: Request) -> HTMLResponse:
+    """Let visitors choose a subscription plan before running searches."""
+
+    return _page_response(request, "plan_selection.html")
+
+
+@app.get("/dashboard", response_class=HTMLResponse)
+def render_dashboard(request: Request) -> HTMLResponse:
+    """Primary dashboard surface for launching and reviewing jobs."""
+
+    return _page_response(request, "dashboard.html")
+
+
+@app.get("/preferences", response_class=HTMLResponse)
+def render_preferences(request: Request) -> HTMLResponse:
+    """User preferences page for notifications and defaults."""
+
+    return _page_response(request, "preferences.html")
 
 
 __all__ = ["app", "get_reports", "PostReport", "SearchRequest"]
