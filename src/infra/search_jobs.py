@@ -79,14 +79,35 @@ def list_search_jobs() -> List[SearchJob]:
 
 def count_active_jobs(
     statuses: Sequence[JobStatus] | None = None,
+    *,
+    user_id: int | None = None,
 ) -> int:
-    """Return the number of jobs currently queued or running."""
+    """Return the number of jobs currently queued or running.
+
+    When ``user_id`` is provided, the count is scoped to that owner; otherwise
+    it reflects the global total.
+    """
 
     active_statuses = tuple(statuses or (JobStatus.QUEUED, JobStatus.RUNNING))
     with get_session() as session:
         stmt = select(func.count()).where(SearchJob.is_deleted.is_(False))
         if active_statuses:
             stmt = stmt.where(SearchJob.status.in_(active_statuses))
+        if user_id is not None:
+            stmt = stmt.where(SearchJob.user_id == user_id)
+        total = session.exec(stmt).one()
+        return int(total or 0)
+
+
+def count_jobs_created_since(*, user_id: int, since_utc) -> int:
+    """Return the number of jobs a user has created since ``since_utc``."""
+
+    with get_session() as session:
+        stmt = select(func.count()).where(
+            SearchJob.is_deleted.is_(False),
+            SearchJob.user_id == user_id,
+            SearchJob.created_at >= since_utc,
+        )
         total = session.exec(stmt).one()
         return int(total or 0)
 
@@ -94,6 +115,7 @@ def count_active_jobs(
 __all__ = [
     "SearchJob",
     "count_active_jobs",
+    "count_jobs_created_since",
     "create_search_job",
     "get_search_job",
     "list_search_jobs",

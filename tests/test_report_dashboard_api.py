@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from itertools import count
 
 import pytest
-from fastapi import status
+from fastapi import Request, status
 from fastapi.testclient import TestClient
 from sqlmodel import SQLModel, Session, create_engine, select
 
@@ -23,10 +23,14 @@ from src.db.models import (
 )
 from src.db import session as db_session
 from src.ui import report_dashboard
+from src.infra.cleanup import purge_expired_jobs_by_plan
+from src.services.plans import archival_plans, get_plan_policy, plan_retention_days
 
 
 @pytest.fixture()
-def api_client(monkeypatch: pytest.MonkeyPatch, tmp_path) -> Tuple[TestClient, List[Dict]]:
+def api_client(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> Tuple[TestClient, List[Dict], Dict[str, User]]:
     database_path = tmp_path / "test.db"
     engine = create_engine(
         f"sqlite:///{database_path}", connect_args={"check_same_thread": False}
@@ -58,8 +62,17 @@ def api_client(monkeypatch: pytest.MonkeyPatch, tmp_path) -> Tuple[TestClient, L
 
     monkeypatch.setattr(report_dashboard.queue, "enqueue", _fake_enqueue)
 
+    auth_context: Dict[str, User] = {"user": _create_user()}
+
+    def _auth_dependency(request: Request) -> User:  # type: ignore[override]
+        return auth_context["user"]
+
+    report_dashboard.app.dependency_overrides[
+        report_dashboard.require_authenticated_user
+    ] = _auth_dependency
+
     client = TestClient(report_dashboard.app)
-    yield client, enqueue_calls
+    yield client, enqueue_calls, auth_context
 
     enqueue_calls.clear()
 
@@ -143,7 +156,7 @@ def _create_report(job_id: int, **overrides) -> PersistedPostReport:
 
 
 def test_read_reports_returns_latest_job_payload(api_client) -> None:
-    client, _ = api_client
+    client, _, _ = api_client
     older_job = _create_job(
         status=JobStatus.SUCCEEDED,
         finished_at=datetime(2024, 1, 1, tzinfo=timezone.utc),
@@ -176,7 +189,7 @@ def test_read_reports_returns_latest_job_payload(api_client) -> None:
 
 
 def test_read_reports_handles_missing_jobs(api_client) -> None:
-    client, _ = api_client
+    client, _, _ = api_client
 
     response = client.get("/api/reports")
 
@@ -190,7 +203,7 @@ def test_read_reports_handles_missing_jobs(api_client) -> None:
 
 
 def test_create_search_enqueues_job(api_client) -> None:
-    client, enqueue_calls = api_client
+    client, enqueue_calls, _ = api_client
 
     response = client.post(
         "/api/searches",
@@ -216,7 +229,7 @@ def test_create_search_enqueues_job(api_client) -> None:
 
 
 def test_create_search_returns_cached_job(api_client, monkeypatch) -> None:
-    client, enqueue_calls = api_client
+    client, enqueue_calls, _ = api_client
     stats = SearchJobStats(
         processed_count=1,
         total_count=1,
@@ -270,7 +283,7 @@ def test_create_search_returns_cached_job(api_client, monkeypatch) -> None:
 
 
 def test_create_search_validation_error(api_client) -> None:
-    client, _ = api_client
+    client, _, _ = api_client
 
     response = client.post(
         "/api/searches",
@@ -281,14 +294,13 @@ def test_create_search_validation_error(api_client) -> None:
 
 
 def test_create_search_enforces_concurrent_limit(api_client, monkeypatch) -> None:
-    client, enqueue_calls = api_client
-    monkeypatch.setenv("MAX_CONCURRENT_JOBS", "1")
+    client, enqueue_calls, auth_context = api_client
     monkeypatch.setattr(
         report_dashboard,
         "fetch_cached_job_response",
         lambda *args, **kwargs: None,
     )
-    _create_job(status=JobStatus.RUNNING)
+    _create_job(user_id=auth_context["user"].id, status=JobStatus.RUNNING)
 
     response = client.post(
         "/api/searches",
@@ -307,9 +319,69 @@ def test_create_search_enforces_concurrent_limit(api_client, monkeypatch) -> Non
     assert enqueue_calls == []
 
 
+def test_create_search_daily_limit_respects_plan(api_client, monkeypatch) -> None:
+    client, enqueue_calls, auth_context = api_client
+    monkeypatch.setattr(
+        report_dashboard,
+        "fetch_cached_job_response",
+        lambda *args, **kwargs: None,
+    )
+    limit = get_plan_policy(auth_context["user"].subscription_plan).daily_job_limit
+    assert limit is not None
+
+    for _ in range(limit):
+        _create_job(user_id=auth_context["user"].id)
+
+    response = client.post(
+        "/api/searches",
+        json={
+            "subreddits": ["test"],
+            "query": "automation",
+            "time_filter": "month",
+            "limit": 5,
+            "comments_limit": 1,
+        },
+    )
+
+    assert response.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+    detail = response.json()["detail"]
+    assert detail["code"] == "daily_quota_exceeded"
+    assert enqueue_calls == []
+
+
+def test_create_search_allows_independent_user_queues(api_client, monkeypatch) -> None:
+    client, enqueue_calls, _ = api_client
+    monkeypatch.setattr(
+        report_dashboard,
+        "fetch_cached_job_response",
+        lambda *args, **kwargs: None,
+    )
+    other_user = _create_user()
+    _create_job(user_id=other_user.id, status=JobStatus.RUNNING)
+
+    response = client.post(
+        "/api/searches",
+        json={
+            "subreddits": ["test"],
+            "query": "automation",
+            "time_filter": "month",
+            "limit": 5,
+            "comments_limit": 1,
+        },
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED
+    assert enqueue_calls
+
+
 def test_read_search_returns_reports(api_client) -> None:
-    client, _ = api_client
-    job = _create_job(status=JobStatus.SUCCEEDED, processed_count=1, total_count=1)
+    client, _, auth_context = api_client
+    job = _create_job(
+        user_id=auth_context["user"].id,
+        status=JobStatus.SUCCEEDED,
+        processed_count=1,
+        total_count=1,
+    )
     _create_report(job.id)
 
     response = client.get(f"/api/searches/{job.id}")
@@ -345,8 +417,13 @@ def test_read_search_returns_reports(api_client) -> None:
 
 
 def test_read_search_running_job_has_placeholder_stats(api_client) -> None:
-    client, _ = api_client
-    job = _create_job(status=JobStatus.RUNNING, processed_count=2, total_count=5)
+    client, _, auth_context = api_client
+    job = _create_job(
+        user_id=auth_context["user"].id,
+        status=JobStatus.RUNNING,
+        processed_count=2,
+        total_count=5,
+    )
     _create_report(job.id)
 
     response = client.get(f"/api/searches/{job.id}")
@@ -367,8 +444,9 @@ def test_read_search_running_job_has_placeholder_stats(api_client) -> None:
 
 
 def test_read_search_failed_job_includes_error_payload(api_client) -> None:
-    client, _ = api_client
+    client, _, auth_context = api_client
     job = _create_job(
+        user_id=auth_context["user"].id,
         status=JobStatus.FAILED,
         processed_count=3,
         total_count=5,
@@ -392,8 +470,17 @@ def test_read_search_failed_job_includes_error_payload(api_client) -> None:
     assert payload["stats"]["processed_count"] == 3
 
 
+def test_read_search_rejects_other_user_job(api_client) -> None:
+    client, _, _ = api_client
+    other_job = _create_job()
+
+    response = client.get(f"/api/searches/{other_job.id}")
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
 def test_read_search_missing_job(api_client) -> None:
-    client, _ = api_client
+    client, _, _ = api_client
 
     response = client.get("/api/searches/999")
 
@@ -401,10 +488,17 @@ def test_read_search_missing_job(api_client) -> None:
 
 
 def test_list_searches_supports_filters(api_client) -> None:
-    client, _ = api_client
-    succeeded = _create_job(status=JobStatus.SUCCEEDED, query="automation")
-    _create_job(status=JobStatus.RUNNING, query="other")
-    _create_job(status=JobStatus.SUCCEEDED, query="automation", is_deleted=True)
+    client, _, auth_context = api_client
+    succeeded = _create_job(
+        user_id=auth_context["user"].id, status=JobStatus.SUCCEEDED, query="automation"
+    )
+    _create_job(user_id=auth_context["user"].id, status=JobStatus.RUNNING, query="other")
+    _create_job(
+        user_id=auth_context["user"].id,
+        status=JobStatus.SUCCEEDED,
+        query="automation",
+        is_deleted=True,
+    )
 
     response = client.get(
         "/api/searches",
@@ -424,9 +518,23 @@ def test_list_searches_supports_filters(api_client) -> None:
     assert data["items"][0]["id"] == succeeded.id
 
 
+def test_list_searches_excludes_other_user_jobs(api_client) -> None:
+    client, _, auth_context = api_client
+    owned_job = _create_job(user_id=auth_context["user"].id)
+    other_job = _create_job()
+
+    response = client.get("/api/searches")
+
+    assert response.status_code == 200
+    payload = response.json()
+    returned_ids = {item["id"] for item in payload["items"]}
+    assert owned_job.id in returned_ids
+    assert other_job.id not in returned_ids
+
+
 def test_delete_search_marks_deleted_and_clears_reports(api_client) -> None:
-    client, _ = api_client
-    job = _create_job(status=JobStatus.SUCCEEDED)
+    client, _, auth_context = api_client
+    job = _create_job(user_id=auth_context["user"].id, status=JobStatus.SUCCEEDED)
     _create_report(job.id)
 
     delete_response = client.delete(f"/api/searches/{job.id}")
@@ -445,16 +553,54 @@ def test_delete_search_marks_deleted_and_clears_reports(api_client) -> None:
         assert reports == []
 
 
+def test_delete_search_rejects_other_user_job(api_client) -> None:
+    client, _, _ = api_client
+    other_job = _create_job()
+
+    delete_response = client.delete(f"/api/searches/{other_job.id}")
+
+    assert delete_response.status_code == status.HTTP_404_NOT_FOUND
+
+
 def test_list_searches_invalid_order(api_client) -> None:
-    client, _ = api_client
+    client, _, _ = api_client
 
     response = client.get("/api/searches", params={"order": "sideways"})
 
     assert response.status_code == 422
 
 
+def test_cleanup_respects_plan_retention_and_archival(api_client) -> None:
+    _, _, _ = api_client
+    old_timestamp = datetime(2020, 1, 1, tzinfo=timezone.utc)
+    free_user = _create_user(subscription_plan=SubscriptionPlan.FREE)
+    enterprise_user = _create_user(subscription_plan=SubscriptionPlan.ENTERPRISE)
+    free_job = _create_job(
+        user_id=free_user.id,
+        created_at=old_timestamp,
+        status=JobStatus.SUCCEEDED,
+    )
+    enterprise_job = _create_job(
+        user_id=enterprise_user.id,
+        created_at=old_timestamp,
+        status=JobStatus.SUCCEEDED,
+    )
+
+    removed = purge_expired_jobs_by_plan(
+        plan_retention_days(), archive_only_plans=archival_plans()
+    )
+
+    with db_session.get_session() as session:
+        assert session.get(SearchJob, free_job.id) is None
+        archived = session.get(SearchJob, enterprise_job.id)
+        assert archived is not None
+        assert archived.is_deleted is True
+    assert removed[SubscriptionPlan.FREE] == 1
+    assert removed[SubscriptionPlan.ENTERPRISE] == 1
+
+
 def test_get_app_config_returns_metadata(api_client) -> None:
-    client, _ = api_client
+    client, _, _ = api_client
 
     response = client.get("/api/config")
 

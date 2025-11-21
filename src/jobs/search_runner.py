@@ -12,11 +12,12 @@ from dotenv import load_dotenv
 from red import PROMPTS, build_openai_client, build_reddit_client
 from src.db.models import JobStatus, PersistedPostReport, SearchJob
 from src.db.session import get_session
-from src.infra.cleanup import purge_expired_jobs
+from src.infra.cleanup import purge_expired_jobs_by_plan
 from src.infra.observability import TelemetryRecorder
 from src.jobs.job_errors import JobError, job_error_from_exception
 from src.services import AnalyzerDependencies, AutomationAnalyzer, PostReport, search_posts
 from src.services.job_stats import build_search_job_stats
+from src.services.plans import archival_plans, plan_retention_days
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +34,9 @@ def run(
 ) -> str:
     """Execute a Reddit search and persist the resulting analysis report."""
 
-    purge_expired_jobs()
+    purge_expired_jobs_by_plan(
+        plan_retention_days(), archive_only_plans=archival_plans()
+    )
     session = get_session()
     job = session.get(SearchJob, search_job_id)
     if job is None:  # pragma: no cover - defensive
