@@ -29,6 +29,9 @@ from src.api.schemas import (
     SearchJobResponse,
     SearchJobStats,
     SearchRequest,
+    SessionResponse,
+    SessionUsage,
+    SessionUser,
 )
 from src.db.migrations import run_migrations
 from src.db.models import (
@@ -236,6 +239,16 @@ def _set_auth_cookie(response: Response, token: str) -> None:
     )
 
 
+def _clear_auth_cookie(response: Response) -> None:
+    """Remove the session JWT from the browser."""
+
+    response.delete_cookie(
+        AUTH_COOKIE_NAME,
+        domain=AUTH_COOKIE_DOMAIN,
+        path="/",
+    )
+
+
 def _unauthorized_error(detail: str = "Authentication required.") -> HTTPException:
     return HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -243,30 +256,64 @@ def _unauthorized_error(detail: str = "Authentication required.") -> HTTPExcepti
     )
 
 
-def require_authenticated_user(request: Request) -> User:
-    """Ensure a valid session token is present and return the user row."""
-
+def _resolve_user_from_cookie(request: Request) -> User | None:
     token = request.cookies.get(AUTH_COOKIE_NAME)
     if not token:
-        raise _unauthorized_error()
+        return None
 
     try:
         payload = jwt.decode(token, AUTH_SECRET_KEY, algorithms=[AUTH_ALGORITHM])
-    except JWTError as exc:
-        raise _unauthorized_error("Invalid or expired session.") from exc
-
-    try:
         user_id = int(payload.get("sub"))
-    except (TypeError, ValueError):
-        raise _unauthorized_error("Malformed session payload.")
+    except (JWTError, TypeError, ValueError):
+        return None
 
     with get_session() as session:
         user = user_repo.get_user_by_id(session, user_id)
         if user is None or not user.is_active:
-            raise _unauthorized_error("User account is unavailable.")
+            return None
         session.refresh(user)
         request.state.current_user = user
         return user
+
+
+def require_authenticated_user(request: Request) -> User:
+    """Ensure a valid session token is present and return the user row."""
+
+    user = _resolve_user_from_cookie(request)
+    if user is None:
+        raise _unauthorized_error()
+    return user
+
+
+def _session_user_payload(user: User) -> SessionUser:
+    if user.id is None:
+        raise RuntimeError("User must be persisted before building a session payload")
+
+    return SessionUser(
+        id=int(user.id),
+        display_name=user.display_name,
+        email=user.email,
+        avatar_url=user.avatar_url,
+        subscription_plan=user.subscription_plan,
+    )
+
+
+def _session_usage(user: User) -> SessionUsage:
+    policy = get_plan_policy(user.subscription_plan)
+    window_start = datetime.now(timezone.utc) - timedelta(days=1)
+    jobs_today = count_jobs_created_since(user_id=int(user.id), since_utc=window_start)
+    active_jobs = count_active_jobs(user_id=int(user.id))
+    remaining = None
+    if policy.daily_job_limit is not None:
+        remaining = max(policy.daily_job_limit - jobs_today, 0)
+
+    return SessionUsage(
+        jobs_today=jobs_today,
+        daily_limit=policy.daily_job_limit,
+        jobs_remaining=remaining,
+        active_jobs=active_jobs,
+        concurrent_limit=policy.concurrent_job_limit,
+    )
 
 
 @app.get("/auth/login/google")
@@ -326,6 +373,19 @@ async def auth_google_callback(request: Request) -> Response:
     jwt_token = _create_session_token(user)
     response = RedirectResponse(url="/")
     _set_auth_cookie(response, jwt_token)
+    return response
+
+
+@app.get("/auth/logout")
+def auth_logout(request: Request) -> Response:
+    """Clear session cookies and return to the dashboard shell."""
+
+    response = RedirectResponse(url="/")
+    _clear_auth_cookie(response)
+    try:
+        request.session.clear()
+    except Exception:  # pragma: no cover - session backend specific
+        pass
     return response
 
 
@@ -489,6 +549,23 @@ def read_app_config() -> AppConfigResponse:
     """Expose shared search and analyzer metadata for the dashboard UI."""
 
     return AppConfigResponse.model_validate(app_config.get_app_config())
+
+
+@app.get("/api/session", response_model=SessionResponse)
+def read_session(request: Request) -> SessionResponse:
+    """Return authentication state and per-user quota usage."""
+
+    login_url = str(request.url_for("auth_login_google"))
+    user = _resolve_user_from_cookie(request)
+    if user is None:
+        return SessionResponse(authenticated=False, login_url=login_url)
+
+    return SessionResponse(
+        authenticated=True,
+        login_url=login_url,
+        user=_session_user_payload(user),
+        usage=_session_usage(user),
+    )
 
 
 def _job_response(

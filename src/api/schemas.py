@@ -8,7 +8,7 @@ from typing import List, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from src.db.models import JobStatus
+from src.db.models import JobStatus, SubscriptionPlan
 from src.jobs.job_errors import JobError
 from src.services.analytics import AUTOMATION_COMPLEXITY_LEVELS
 from src.config import SEARCH_PARAMETERS
@@ -131,6 +131,35 @@ class AppConfigResponse(BaseModel):
     time_filters: TimeFilterMetadata
     limits: dict[str, LimitMetadata]
     prompts: dict[str, str]
+
+
+class SessionUser(BaseModel):
+    """Publicly safe snapshot of the authenticated user."""
+
+    id: int
+    display_name: str | None = None
+    email: str | None = None
+    avatar_url: str | None = None
+    subscription_plan: SubscriptionPlan
+
+
+class SessionUsage(BaseModel):
+    """Per-user quota utilization for the current session."""
+
+    jobs_today: int
+    daily_limit: int | None = None
+    jobs_remaining: int | None = None
+    active_jobs: int
+    concurrent_limit: int | None = None
+
+
+class SessionResponse(BaseModel):
+    """Envelope describing authentication status and quota usage."""
+
+    authenticated: bool
+    login_url: str | None = None
+    user: SessionUser | None = None
+    usage: SessionUsage | None = None
 
 
 class PersistedPostReportSchema(BaseModel):
@@ -290,6 +319,9 @@ __all__ = [
     "SearchJobResponse",
     "SearchJobSummaryStats",
     "SearchJobStats",
+    "SessionResponse",
+    "SessionUsage",
+    "SessionUser",
     "TopKeywordStat",
     "TimelineBucketStat",
     "TimelineStats",
