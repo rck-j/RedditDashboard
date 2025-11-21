@@ -11,7 +11,16 @@ from pathlib import Path
 from typing import Dict, List, Sequence
 
 from authlib.integrations.starlette_client import OAuth, OAuthError
-from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
+from fastapi import (
+    Body,
+    Depends,
+    FastAPI,
+    Form,
+    HTTPException,
+    Request,
+    Response,
+    status,
+)
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from jose import JWTError, jwt
@@ -213,6 +222,28 @@ class EmailAuthRequest(BaseModel):
 
 class EmailSignupRequest(EmailAuthRequest):
     display_name: str | None = None
+
+
+def _email_auth_request(
+    payload: EmailAuthRequest | None = Body(None),
+    form_email: str | None = Form(None),
+    form_password: str | None = Form(None),
+) -> EmailAuthRequest:
+    """Accept either JSON or form-encoded login submissions."""
+
+    if payload is not None:
+        return payload
+
+    if form_email is not None or form_password is not None:
+        return EmailAuthRequest(email=form_email or "", password=form_password or "")
+
+    raise HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        detail=_error_detail(
+            "invalid_login_payload",
+            "Email and password are required to sign in.",
+        ),
+    )
 
 
 def enforce_rate_limit(request: Request) -> None:
@@ -448,9 +479,9 @@ def auth_signup(
 
 @app.post("/auth/login", response_model=SessionResponse)
 def auth_login(
-    payload: EmailAuthRequest,
     request: Request,
     response: Response,
+    payload: EmailAuthRequest = Depends(_email_auth_request),
     _: None = Depends(enforce_rate_limit),
 ) -> SessionResponse:
     """Authenticate with email/password credentials."""
