@@ -429,12 +429,12 @@ async def auth_login_google(request: Request) -> Response:
 
 @app.post("/auth/signup", response_model=SessionResponse)
 def auth_signup(
+    request: Request,
+    response: Response,
     payload: EmailSignupRequest | None = Body(None),
     display_name: str | None = Form(None),
     email: str | None = Form(None),
     password: str | None = Form(None),
-    request: Request,
-    response: Response,
     _: None = Depends(enforce_rate_limit),
 ) -> SessionResponse:
     """Create a local email/password account and issue a session cookie."""
